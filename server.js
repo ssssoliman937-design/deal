@@ -1,7 +1,11 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
 const rateLimit = require('express-rate-limit');
 
 // Environment & Secret Configuration
-const PORT = process.env.PORT || 3001;
+const defaultPort = parseInt(process.env.PORT || '3001', 10);
 const FIREBASE_DB_URL = process.env.FIREBASE_DB_URL || 'https://cuafa-9f3b6-default-rtdb.firebaseio.com';
 
 const app = express();
@@ -605,8 +609,6 @@ function getPublicRoomState(room) {
   };
 }
 
-let PORT = parseInt(process.env.PORT || '3001', 10);
-
 function startServer(portToUse) {
   server.listen(portToUse, () => {
     console.log(`\n=================================================`);
@@ -624,7 +626,7 @@ function startServer(portToUse) {
 }
 
 if (!process.env.VERCEL) {
-  startServer(PORT);
+  startServer(defaultPort);
 }
 
 module.exports = app;
