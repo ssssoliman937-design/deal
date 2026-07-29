@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deal Or No Deal Football Draft ⚽🧰</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- PWA Mobile Icons -->
+  <link rel="icon" type="image/png" href="/dond_app_icon.png">
+  <link rel="apple-touch-icon" href="/dond_app_icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#f59e0b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DOND Football">
+  <!-- CSS -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Animated Background Elements -->
+  <div class="stadium-bg"></div>
+  <div class="light-beam beam-left"></div>
+  <div class="light-beam beam-right"></div>
+  <div id="particles-canvas" class="overlay-particles"></div>
+  <div id="emoji-floating-container" class="emoji-floating-container"></div>
+
+  <div id="app" class="app-container">
+
+    <!-- TOP NAV / HEADER BAR -->
+    <header class="top-nav glass-card">
+      <div class="nav-brand">
+        <span class="game-logo">⚽ DEAL <span class="gold-text">OR NO DEAL</span></span>
+      </div>
+      <div id="room-info-bar" class="room-info-bar hidden">
+        <div class="info-badge">
+          <span class="label">رقم الغرفة:</span>
+          <span id="display-room-id" class="value room-code">----</span>
+          <button id="btn-copy-code" class="btn-icon" title="نسخ الكود">📋</button>
+        </div>
+        <div class="info-badge">
+          <span class="label">دورك:</span>
+          <span id="user-role-badge" class="role-pill">...</span>
+        </div>
+        <div class="info-badge">
+          <span id="spectators-count" class="value">👁️ 0</span>
+        </div>
+        <button id="btn-whatsapp-share" class="btn-icon wa-btn" title="دعوة صديقك عبر الواتساب">💬 دعوة صديقك</button>
+        <button id="btn-sound-toggle" class="btn-icon sound-btn" title="كتم/تشغيل الصوت">🔊</button>
+      </div>
+    </header>
+
+    <!-- NOTIFICATION MESSAGES BANNER -->
+    <div id="notification-banner" class="notification-banner hidden"></div>
+
+    <!-- SPECTATOR BANNER -->
+    <div id="spectator-banner" class="spectator-banner hidden">
+      <span>👁️ أنت تتابع هذه اللعبة حالياً بصفة (مراقب). يمكنك مشاهدة الاختيارات والمباراة مباشرة!</span>
+    </div>
+
+    <!-- MAIN VIEWS CONTAINER -->
+    <main class="views-wrapper">
+
+      <!-- VIEW 1: LOBBY (CREATE / JOIN ROOM) -->
+      <section id="view-lobby" class="view-section active">
+        <div class="hero-card glass-card">
+          <div class="hero-header">
+            <h1 class="glow-title">تحدي تشكيلات <span class="gold-text">DEAL OR NO DEAL</span></h1>
+            <p class="subtitle">كون فريقك الأحلام من 4 لاعبين ومدرب ضد صديقك في بث مباشر!</p>
+          </div>
+
+          <div class="form-container">
+            <div class="input-group">
+              <label for="player-name-input">اسمك في اللعبة <span class="required-star" style="color:var(--neon-red); font-weight:bold;">*</span> (3 حروف على الأقل):</label>
+              <input type="text" id="player-name-input" placeholder="أدخل اسمك هنا (مثال: الشلهوب)" minlength="3" maxlength="15" autocomplete="off" required>
+            </div>
+
+            <div class="actions-split">
+              <!-- Create Room Form -->
+              <div class="action-box">
+                <div class="action-header">
+                  <span class="action-icon">👑</span>
+                  <div>
+                    <h3>1. إنشاء مباراة جديدة</h3>
+                    <p>قم بإنشاء الغرفة واستلام الكود لمشاركته</p>
+                  </div>
+                </div>
+                <div class="input-stack">
+                  <input type="text" id="create-room-id" class="stylish-input" placeholder="كود الغرفة (مثال: 7777 - اختياري)" maxlength="6">
+                  <button id="btn-create-room" class="btn btn-primary gold-btn full-btn">👑 إنشاء المباراة كـ مستضيف</button>
+                </div>
+              </div>
+
+              <div class="divider-text">أو</div>
+
+              <!-- Join Room Form -->
+              <div class="action-box">
+                <div class="action-header">
+                  <span class="action-icon">⚽</span>
+                  <div>
+                    <h3>2. الانضمام لمباراة صديقك</h3>
+                    <p>أدخل كود الغرفة للانضمام فوراً</p>
+                  </div>
+                </div>
+                <div class="input-stack">
+                  <input type="text" id="join-room-id" class="stylish-input" placeholder="أدخل كود الغرفة هنا" maxlength="6">
+                  <button id="btn-join-room" class="btn btn-secondary full-btn">⚽ الانضمام للمباراة كـ ضيف</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rules-quick">
+            <h4>📜 قواعد اللعبة السريعة:</h4>
+            <ul>
+              <li>لكل مركز (حارس، مدافع، وسط، مهاجم، مدرب) لديك 4 حقائب غامضة.</li>
+              <li>عند فتح أول حقيبة: يمكنك اختيار **DEAL** للقبول، أو رفضها واختيار حقيبة أخرى **لتتم الصفقة تلقائياً**.</li>
+              <li>يوجد بطاقات مساعدة عشوائية (سرقة لاعب، درع حماية، فرصة إضافية) مرفقة مع بعض اللاعبين!</li>
+              <li>بعد التشكيل: تبدأ محاكاة مباراة **يلا شوت** لمدة 10 ثوانٍ لحسم الفائز!</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: DRAFT STAGE (DEAL OR NO DEAL) -->
+      <section id="view-draft" class="view-section hidden">
+        <!-- Turn Status Bar with Timer -->
+        <div class="turn-bar glass-card">
+          <div class="round-indicator">
+            <span class="position-badge" id="current-position-title">حارس المرمى 🧤</span>
+            <span class="turn-desc" id="current-turn-desc">جاري الانتظار...</span>
+          </div>
+
+          <!-- 15s Circular Turn Timer Ring -->
+          <div id="turn-timer-ring" class="turn-timer-ring hidden">
+            <svg class="timer-svg" viewBox="0 0 36 36">
+              <path class="timer-circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              <path id="timer-circle-progress" class="timer-circle-progress" stroke-dasharray="100, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            </svg>
+            <span id="turn-timer-num" class="timer-num">15</span>
+          </div>
+
+          <div class="players-vs">
+            <span id="host-name-tag" class="player-tag host">المستضيف</span>
+            <span class="vs">VS</span>
+            <span id="guest-name-tag" class="player-tag guest">الضيف</span>
+          </div>
+        </div>
+
+        <!-- Floating Reaction Emoji Bar -->
+        <div id="live-emoji-bar" class="live-emoji-bar">
+          <button class="emoji-btn" data-emoji="🔥">🔥</button>
+          <button class="emoji-btn" data-emoji="😂">😂</button>
+          <button class="emoji-btn" data-emoji="👏">👏</button>
+          <button class="emoji-btn" data-emoji="😱">😱</button>
+          <button class="emoji-btn" data-emoji="💣">💣</button>
+          <button class="emoji-btn" data-emoji="🧤">🧤</button>
+        </div>
+
+        <!-- Main Draft Play Area -->
+        <div class="draft-layout">
+          <!-- Left / Center: Briefcases & Deal Decisions -->
+          <div class="draft-stage glass-card">
+            
+            <div id="briefcases-container" class="briefcases-grid">
+              <!-- 4 Briefcases rendered dynamically -->
+            </div>
+
+            <!-- Reveal Animation Banner ("عرض ما فاتك") -->
+            <div id="missed-cards-reveal" class="missed-reveal-panel hidden">
+              <h3>✨ عرض ما فاتك (كشف باقي البطاقات)!</h3>
+              <div id="missed-cards-grid" class="missed-grid"></div>
+            </div>
+
+            <!-- Action Decision Panel (Deal / No Deal buttons) -->
+            <div id="decision-panel" class="decision-panel hidden">
+              <div class="decision-card-preview" id="picked-card-preview">
+                <!-- Preview of selected briefcase -->
+              </div>
+              <div class="decision-buttons" id="decision-action-btns">
+                <button id="btn-deal" class="btn btn-deal">
+                  <span class="deal-icon">🤝</span>
+                  <span class="deal-text">DEAL / موافقة!</span>
+                </button>
+                <button id="btn-no-deal" class="btn btn-no-deal">
+                  <span class="deal-icon">❌</span>
+                  <span class="deal-text">NO DEAL / بطاقة أخرى!</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right: Real-time Squad Boards -->
+          <div class="squads-sidebar">
+            <!-- Host Squad -->
+            <div class="squad-box glass-card host-squad">
+              <div class="squad-header">
+                <span class="owner-name" id="host-squad-name">تكتيك المستضيف</span>
+                <span class="helper-badge" id="host-helper-badge">بدون مساعدة</span>
+              </div>
+              <div class="squad-list" id="host-squad-list">
+                <!-- 5 Position slots -->
+              </div>
+            </div>
+
+            <!-- Guest Squad -->
+            <div class="squad-box glass-card guest-squad">
+              <div class="squad-header">
+                <span class="owner-name" id="guest-squad-name">تكتيك الضيف</span>
+                <span class="helper-badge" id="guest-helper-badge">بدون مساعدة</span>
+              </div>
+              <div class="squad-list" id="guest-squad-list">
+                <!-- 5 Position slots -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: MATCH SIMULATION (YALLASHOOT STYLE) -->
+      <section id="view-match" class="view-section hidden">
+        <div class="match-container glass-card">
+          
+          <!-- YallaShoot Header Scoreboard -->
+          <div class="scoreboard-header">
+            <div class="yalla-badge">🔴 بث مباشر - YallaShoot Match Engine</div>
+            <div class="match-teams-score">
+              <div class="team-block host-team">
+                <div class="team-flag">👑</div>
+                <div class="team-name" id="sim-host-name">المستضيف</div>
+              </div>
+
+              <div class="score-display">
+                <span id="sim-host-score" class="score-num">0</span>
+                <span class="colon">:</span>
+                <span id="sim-guest-score" class="score-num">0</span>
+                <div id="sim-timer" class="sim-minute">0'</div>
+              </div>
+
+              <div class="team-block guest-team">
+                <div class="team-flag">⚽</div>
+                <div class="team-name" id="sim-guest-name">الضيف</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Helper Card Steal Action trigger during match -->
+          <div id="steal-action-box" class="steal-box hidden">
+            <span>🥷 لديك بطاقة سرقة! يمكنك استبدال أي لاعب من تشكيلتك بآخر من الخصم الآن!</span>
+            <button id="btn-trigger-steal" class="btn gold-btn sm">تنفيذ السرقة 🥷</button>
+          </div>
+
+          <!-- YallaShoot Live Ticker Log -->
+          <div class="simulation-body">
+            <div class="commentary-feed" id="commentary-feed">
+              <div class="feed-event init">
+                <span class="time">00'</span>
+                <span class="text">🎙️ أهلاً بكم في تغطية محاكاة قمة التشكيلات مباشرة! صفر حكم اللقاء يعلن البداية!</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Match Statistics & Winner Modal -->
+          <div id="match-results-overlay" class="results-overlay hidden">
+            <div class="results-card glass-card glow-border">
+              <h2 id="winner-announcement" class="winner-title">🎉 الفائز بالمباراة!</h2>
+              
+              <div class="final-score-big" id="final-score-text">3 - 1</div>
+
+              <!-- MVP Player Award Box -->
+              <div id="mvp-award-box" class="mvp-award-box">
+                <span class="mvp-badge">🏆 رجل المباراة (MVP)</span>
+                <div id="mvp-player-name" class="mvp-name">Kylian Mbappé (91)</div>
+              </div>
+
+              <div class="stats-table">
+                <h3>📊 إحصائيات المباراة النهائية:</h3>
+                <div class="stat-row">
+                  <span id="stat-host-pos" class="val">55%</span>
+                  <span class="stat-name">الاستحواذ</span>
+                  <span id="stat-guest-pos" class="val">45%</span>
+                </div>
+                <div class="stat-row">
+                  <span id="stat-host-shots" class="val">8</span>
+                  <span class="stat-name">إجمالي التسديدات</span>
+                  <span id="stat-guest-shots" class="val">5</span>
+                </div>
+                <div class="stat-row">
+                  <span id="stat-host-ontarget" class="val">5</span>
+                  <span class="stat-name">تسديدات على المرمى</span>
+                  <span id="stat-guest-ontarget" class="val">3</span>
+                </div>
+              </div>
+
+              <div class="results-actions">
+                <button id="btn-rematch" class="btn btn-primary gold-btn">إعادة اللعب (مباراة جديدة) 🔄</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER COPYRIGHT BRANDING -->
+    <footer class="app-footer">
+      <p>© جميع الحقوق محفوظة لـ <strong>Deal or No Deal Football Draft</strong> ⚽✨</p>
+    </footer>
+
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <!-- Client JS scripts -->
+  <script src="/js/sound-effects.js"></script>
+  <script src="/js/firebase-engine.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
