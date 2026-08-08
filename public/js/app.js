@@ -43,6 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnStealConfirmYes = document.getElementById('btn-steal-confirm-yes');
   const btnStealConfirmDifferent = document.getElementById('btn-steal-confirm-different');
   const btnStealConfirmCancel = document.getElementById('btn-steal-confirm-cancel');
+  const protectionActionBox = document.getElementById('protection-action-box');
+  const protectionBoxText = document.getElementById('protection-box-text');
+  const btnTriggerProtection = document.getElementById('btn-trigger-protection');
 
   const roomInfoBar = document.getElementById('room-info-bar');
   const displayRoomId = document.getElementById('display-room-id');
@@ -327,9 +330,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderLineupView() {
     lineupHostName.textContent = roomState.host.name;
     lineupGuestName.textContent = roomState.guest ? roomState.guest.name : 'الضيف';
-    renderSquadList(lineupHostList, roomState.host.squad);
-    renderSquadList(lineupGuestList, roomState.guest ? roomState.guest.squad : null);
+    renderSquadList(lineupHostList, roomState.host.squad, 'host');
+    renderSquadList(lineupGuestList, roomState.guest ? roomState.guest.squad : null, 'guest');
     renderStealBox();
+    renderProtectionBox();
   }
 
   function renderDraftView() {
@@ -496,15 +500,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const item = squad ? squad[key] : null;
 
       if (item) {
+        const isProtected = ownerRole && roomState[ownerRole]?.protectedPos === key;
         slot.className = 'squad-slot filled';
         slot.innerHTML = `
-          <span class="slot-pos">${posNames[key]}</span>
+          <span class="slot-pos">${posNames[key]}${isProtected ? ' 🛡️' : ''}</span>
           <span class="slot-player">${item.name}</span>
           <span class="slot-rating">${item.rating}</span>
         `;
 
         const isMyPickStep = stealStep === 'pick_mine' && ownerRole === myRole;
-        const isOppPickStep = stealStep === 'pick_theirs' && ownerRole === opponentRole();
+        const isOppPickStep = stealStep === 'pick_theirs' && ownerRole === opponentRole() && !isProtected;
+        const isMyProtectPickStep = protectStep === 'pick' && ownerRole === myRole;
+
         if (isMyPickStep || isOppPickStep) {
           slot.classList.add('steal-selectable');
           slot.onclick = () => {
@@ -517,6 +524,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
               openStealConfirm(key, item);
             }
+          };
+        } else if (isMyProtectPickStep) {
+          slot.classList.add('steal-selectable');
+          slot.onclick = () => {
+            FirebaseEngine.setProtection(currentRoomId, roomState, key);
+            protectStep = 'idle';
+            renderLineupView();
           };
         }
       } else {
@@ -591,6 +605,29 @@ document.addEventListener('DOMContentLoaded', () => {
     stealMyPos = null;
     renderSquads();
     if (roomState && roomState.status === 'lineup') renderLineupView();
+  });
+
+  // PROTECTION CARD FLOW
+  let protectStep = 'idle'; // idle | pick
+
+  function renderProtectionBox() {
+    const hasProtection = myHelperCard()?.id === 'protection';
+    const canProtect = hasProtection && roomState && roomState.status === 'lineup' && roomState.guest;
+    protectionActionBox.classList.toggle('hidden', !canProtect);
+    if (!canProtect && protectStep !== 'idle') protectStep = 'idle';
+    if (canProtect) {
+      const myProtected = roomState[myRole]?.protectedPos;
+      const posNames = { GK: 'حارس', DEF: 'مدافع', MID: 'وسط', ATT: 'مهاجم', MGR: 'مدرب' };
+      protectionBoxText.textContent = myProtected
+        ? `🛡️ اللاعب المحمي حاليًا: ${posNames[myProtected]}. تقدر تغيّره لو حابب.`
+        : '🛡️ لديك درع الحماية! اختار لاعب من تشكيلتك تحميه من السرقة!';
+    }
+  }
+
+  btnTriggerProtection.addEventListener('click', () => {
+    protectStep = 'pick';
+    showNotification('🛡️ اضغط على لاعب من تشكيلتك تحميه من السرقة');
+    renderLineupView();
   });
 
   function renderMatchView() {

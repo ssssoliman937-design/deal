@@ -354,7 +354,8 @@ const FirebaseEngine = {
             id: myPlayerId,
             name: sanitizedHostName,
             squad: { GK: null, DEF: null, MID: null, ATT: null, MGR: null },
-            helperCard: null
+            helperCard: null,
+            protectedPos: null
           },
           guest: null,
           spectatorsCount: 0,
@@ -385,7 +386,8 @@ const FirebaseEngine = {
           id: myPlayerId,
           name: sanitizedGuestName,
           squad: { GK: null, DEF: null, MID: null, ATT: null, MGR: null },
-          helperCard: null
+          helperCard: null,
+          protectedPos: null
         };
         return roomRef.child('guest').set(guestData).then(() => finalRoomId);
       } else if (room.guest && room.guest.id === myPlayerId) {
@@ -733,6 +735,7 @@ const FirebaseEngine = {
     const opp = roomState[oppKey];
     if (!me || !opp) return;
     if (!me.helperCard || me.helperCard.id !== 'steal') return;
+    if (opp.protectedPos && opp.protectedPos === oppPos) return; // shielded by درع الحماية
     const givenPlayer = me.squad[myPos];
     const takenPlayer = opp.squad[oppPos];
     if (!givenPlayer || !takenPlayer) return;
@@ -748,6 +751,24 @@ const FirebaseEngine = {
         kind: 'steal',
         text: `🥷 تم سرقة ${takenPlayer.name} منك واستبداله بـ ${givenPlayer.name}!`
       });
+    });
+  },
+
+  setProtection(roomId, roomState, posKey) {
+    // Usable on the lineup-reveal screen, before the opponent can steal: shields
+    // one of your own players so requestSteal refuses to take them.
+    if (roomState.status !== 'lineup') return;
+    const isHost = roomState.host.id === myPlayerId;
+    const myKey = isHost ? 'host' : 'guest';
+    const me = roomState[myKey];
+    if (!me || !me.helperCard || me.helperCard.id !== 'protection') return;
+    if (!me.squad[posKey]) return;
+
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    roomRef.child(myKey + '/protectedPos').set(posKey);
+    this.notify(roomId, {
+      kind: 'protection',
+      text: `🛡️ ${me.name} حمى ${me.squad[posKey].name} من السرقة!`
     });
   },
 
@@ -825,8 +846,10 @@ const FirebaseEngine = {
       positionIndex: 0,
       'host/squad': { GK: null, DEF: null, MID: null, ATT: null, MGR: null },
       'host/helperCard': null,
+      'host/protectedPos': null,
       'guest/squad': { GK: null, DEF: null, MID: null, ATT: null, MGR: null },
       'guest/helperCard': null,
+      'guest/protectedPos': null,
       turnState: {
         positionKey: 'GK',
         positionNameAr: POSITION_NAMES_AR['GK'],
