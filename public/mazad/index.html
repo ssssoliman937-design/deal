@@ -158,10 +158,10 @@
         </div>
       </section>
 
-      <!-- VIEW 3: FINAL RESULTS -->
-      <section id="view-final" class="view-section hidden">
+      <!-- VIEW 3: LINEUP REVEAL (before simulation starts) -->
+      <section id="view-lineup" class="view-section hidden">
         <div class="final-container glass-card glow-border">
-          <h2 class="final-title">🏆 التشكيلتان جاهزتان!</h2>
+          <h2 class="final-title">🏆 التشكيلتان جاهزتان! استعد للمباراة</h2>
           <div class="final-columns">
             <div class="final-col">
               <h3 id="final-host-name"></h3>
@@ -174,7 +174,78 @@
               <div id="final-guest-squad" class="squad-list"></div>
             </div>
           </div>
-          <button id="btn-restart-auction" class="btn btn-primary gold-btn">مزاد جديد 🔄</button>
+          <button id="btn-start-simulation" class="btn btn-primary gold-btn">ابدأ المحاكاة 🏟️</button>
+        </div>
+      </section>
+
+      <!-- VIEW 4: MATCH SIMULATION (same engine as Deal or No Deal) -->
+      <section id="view-match" class="view-section hidden">
+        <div class="match-container glass-card">
+
+          <div class="scoreboard-header">
+            <div class="yalla-badge">🔴 بث مباشر - مباراة المزاد</div>
+            <div class="match-teams-score">
+              <div class="team-block host-team">
+                <div class="team-flag">👑</div>
+                <div class="team-name" id="sim-host-name">المستضيف</div>
+              </div>
+              <div class="score-display">
+                <span id="sim-host-score" class="score-num">0</span>
+                <span class="colon">:</span>
+                <span id="sim-guest-score" class="score-num">0</span>
+                <div id="sim-timer" class="sim-minute">0'</div>
+              </div>
+              <div class="team-block guest-team">
+                <div class="team-flag">⚽</div>
+                <div class="team-name" id="sim-guest-name">الضيف</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="simulation-body">
+            <div class="commentary-feed" id="commentary-feed">
+              <div class="feed-event init">
+                <span class="time">00'</span>
+                <span class="text">🎙️ أهلاً بيكم في مباراة تشكيلتين المزاد! صافرة البداية انطلقت!</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="match-results-overlay" class="results-overlay hidden">
+            <div class="results-card glass-card glow-border">
+              <h2 id="winner-announcement" class="winner-title">🎉 الفائز بالمباراة!</h2>
+              <div class="final-score-big" id="final-score-text">0 - 0</div>
+
+              <div id="mvp-award-box" class="mvp-award-box">
+                <span class="mvp-badge">🏆 رجل المباراة (MVP)</span>
+                <div id="mvp-player-name" class="mvp-name"></div>
+              </div>
+
+              <div class="stats-table">
+                <h3>📊 إحصائيات المباراة النهائية:</h3>
+                <div class="stat-row">
+                  <span id="stat-host-pos" class="val">55%</span>
+                  <span class="stat-name">الاستحواذ</span>
+                  <span id="stat-guest-pos" class="val">45%</span>
+                </div>
+                <div class="stat-row">
+                  <span id="stat-host-shots" class="val">8</span>
+                  <span class="stat-name">إجمالي التسديدات</span>
+                  <span id="stat-guest-shots" class="val">5</span>
+                </div>
+                <div class="stat-row">
+                  <span id="stat-host-ontarget" class="val">5</span>
+                  <span class="stat-name">تسديدات على المرمى</span>
+                  <span id="stat-guest-ontarget" class="val">3</span>
+                </div>
+              </div>
+
+              <div class="results-actions">
+                <button id="btn-restart-auction" class="btn btn-primary gold-btn">مزاد جديد 🔄</button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
     </main>

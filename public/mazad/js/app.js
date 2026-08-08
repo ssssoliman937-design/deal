@@ -19,7 +19,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const viewLobby = document.getElementById('view-lobby');
   const viewAuction = document.getElementById('view-auction');
-  const viewFinal = document.getElementById('view-final');
+  const viewLineup = document.getElementById('view-lineup');
+  const viewMatch = document.getElementById('view-match');
+
+  const btnStartSimulation = document.getElementById('btn-start-simulation');
+
+  const simHostName = document.getElementById('sim-host-name');
+  const simGuestName = document.getElementById('sim-guest-name');
+  const simHostScore = document.getElementById('sim-host-score');
+  const simGuestScore = document.getElementById('sim-guest-score');
+  const simTimer = document.getElementById('sim-timer');
+  const commentaryFeed = document.getElementById('commentary-feed');
+  const matchResultsOverlay = document.getElementById('match-results-overlay');
+  const winnerAnnouncement = document.getElementById('winner-announcement');
+  const finalScoreText = document.getElementById('final-score-text');
+  const mvpPlayerName = document.getElementById('mvp-player-name');
+  const statHostPos = document.getElementById('stat-host-pos');
+  const statGuestPos = document.getElementById('stat-guest-pos');
+  const statHostShots = document.getElementById('stat-host-shots');
+  const statGuestShots = document.getElementById('stat-guest-shots');
+  const statHostOntarget = document.getElementById('stat-host-ontarget');
+  const statGuestOntarget = document.getElementById('stat-guest-ontarget');
 
   const roomInfoBar = document.getElementById('room-info-bar');
   const displayRoomId = document.getElementById('display-room-id');
@@ -70,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRestartAuction = document.getElementById('btn-restart-auction');
 
   function showView(viewId) {
-    [viewLobby, viewAuction, viewFinal].forEach(view => {
+    [viewLobby, viewAuction, viewLineup, viewMatch].forEach(view => {
       if (view.id === viewId) {
         view.classList.remove('hidden');
         view.classList.add('active');
@@ -150,7 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnRestartAuction.addEventListener('click', () => {
     window.soundFX.playClick();
+    matchResultsOverlay.classList.add('hidden');
     AuctionEngine.restartGame(currentRoomId, roomState.squadMode);
+  });
+
+  btnStartSimulation.addEventListener('click', () => {
+    window.soundFX.playClick();
+    AuctionEngine.confirmLineupReady(currentRoomId, roomState);
   });
 
   // REALTIME STATE
@@ -194,9 +220,12 @@ document.addEventListener('DOMContentLoaded', () => {
       userRoleBadge.style.background = 'var(--gold-primary)';
     }
 
-    if (roomState.status === 'finished') {
-      showView('view-final');
-      renderFinalView();
+    if (roomState.status === 'lineup') {
+      showView('view-lineup');
+      renderLineupView();
+    } else if (roomState.status === 'simulating' || roomState.status === 'finished') {
+      showView('view-match');
+      renderMatchView();
     } else {
       showView('view-auction');
       renderAuctionView();
@@ -344,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderFinalView() {
+  function renderLineupView() {
     finalHostName.textContent = roomState.host.name;
     finalHostBudget.textContent = `💰 الباقي: ${fmtMoney(roomState.host.remainingBudget)}`;
     renderFullSquadList(finalHostSquad, roomState.host.squad);
@@ -354,6 +383,66 @@ document.addEventListener('DOMContentLoaded', () => {
       finalGuestBudget.textContent = `💰 الباقي: ${fmtMoney(roomState.guest.remainingBudget)}`;
       renderFullSquadList(finalGuestSquad, roomState.guest.squad);
     }
+  }
+
+  function renderMatchView() {
+    simHostName.textContent = roomState.host.name;
+    simGuestName.textContent = roomState.guest ? roomState.guest.name : 'الضيف';
+
+    if (!roomState.matchSimulation) return;
+    const sim = roomState.matchSimulation;
+    simHostScore.textContent = sim.hostGoals;
+    simGuestScore.textContent = sim.guestGoals;
+    simTimer.textContent = `${sim.currentTime || 0}'`;
+
+    renderCommentaryFeed(sim.events, sim.currentTime || 0);
+
+    if (roomState.status === 'finished') {
+      setTimeout(() => {
+        matchResultsOverlay.classList.remove('hidden');
+        finalScoreText.textContent = `${sim.hostGoals} - ${sim.guestGoals}`;
+
+        if (sim.mvpPlayer) mvpPlayerName.textContent = `${sim.mvpPlayer.name} (${sim.mvpPlayer.rating || 90})`;
+
+        if (roomState.winner === 'host') {
+          winnerAnnouncement.textContent = `👑 فاز ${roomState.host.name} بالمباراة!`;
+        } else if (roomState.winner === 'guest') {
+          winnerAnnouncement.textContent = `⚽ فاز ${roomState.guest ? roomState.guest.name : 'الضيف'} بالمباراة!`;
+        } else {
+          winnerAnnouncement.textContent = '🤝 تعادل حماسي بين الطرفين!';
+        }
+
+        statHostPos.textContent = `${sim.stats.possession[0]}%`;
+        statGuestPos.textContent = `${sim.stats.possession[1]}%`;
+        statHostShots.textContent = sim.stats.shots[0];
+        statGuestShots.textContent = sim.stats.shots[1];
+        statHostOntarget.textContent = sim.stats.shotsOnTarget[0];
+        statGuestOntarget.textContent = sim.stats.shotsOnTarget[1];
+      }, 1000);
+    }
+  }
+
+  function renderCommentaryFeed(events, currentMinute) {
+    commentaryFeed.innerHTML = '';
+    const initEvt = document.createElement('div');
+    initEvt.className = 'feed-event init';
+    initEvt.innerHTML = `<span class="time">00'</span><span class="text">🎙️ البداية! صافرة حكم المباراة انطلقت والكرة في الملعب!</span>`;
+    commentaryFeed.appendChild(initEvt);
+
+    events.forEach(evt => {
+      if (evt.minute <= currentMinute) {
+        const div = document.createElement('div');
+        div.className = `feed-event ${evt.type.toLowerCase()}`;
+        div.innerHTML = `<span class="time">${evt.minute}'</span><span class="text">${evt.text}</span>`;
+        commentaryFeed.appendChild(div);
+
+        if (evt.type === 'GOAL' && evt.minute === currentMinute) {
+          window.soundFX?.playGoal();
+        }
+      }
+    });
+
+    commentaryFeed.scrollTop = commentaryFeed.scrollHeight;
   }
 
 });

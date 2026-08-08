@@ -135,11 +135,14 @@ function startRoundData(room) {
 function applyRoundStart(roomRef, room) {
   const result = startRoundData(room);
   if (result.finished) {
-    roomRef.update({ status: 'finished', currentRound: null });
+    // Drafting is done — both squads are complete. Show the lineup reveal
+    // before the match simulation runs (status becomes 'finished' only once
+    // the simulated match itself is over, see startMatchSimulation below).
+    roomRef.update({ status: 'lineup', currentRound: null });
     return;
   }
   if (result.uncontested) {
-    if (!result.player) { roomRef.update({ status: 'finished', currentRound: null }); return; }
+    if (!result.player) { roomRef.update({ status: 'lineup', currentRound: null }); return; }
     room.usedPlayerIds[result.player.id] = true;
     placeAwardedPlayer(room, result.soleRole, result.player);
     roomRef.update({
@@ -158,7 +161,7 @@ function applyRoundStart(roomRef, room) {
     setTimeout(() => applyRoundStart(roomRef, room), 2500);
     return;
   }
-  if (!result.candidate) { roomRef.update({ status: 'finished', currentRound: null }); return; }
+  if (!result.candidate) { roomRef.update({ status: 'lineup', currentRound: null }); return; }
   room.usedPlayerIds[result.candidate.id] = true;
   roomRef.update({
     status: 'bidding',
@@ -326,6 +329,118 @@ const AuctionEngine = {
     }, 4000);
   },
 
+  confirmLineupReady(roomId, room) {
+    const roomRef = db.ref('mazad_rooms/' + roomId);
+    roomRef.child('lineupReady').transaction(current => current ? current : true)
+      .then(result => {
+        if (result.committed && room.host.id === myPlayerId) {
+          // Only the host client actually starts the simulation (matches ticker ownership below)
+          this.startMatchSimulation(roomId, room);
+        }
+      });
+  },
+
+  // Same simulation math as Deal or No Deal's engine (GK-vs-shooter save
+  // chance, per-match energy, 10x1000ms ticker) adapted for squads that hold
+  // an ARRAY of players per position instead of exactly one.
+  startMatchSimulation(roomId, room) {
+    const roomRef = db.ref('mazad_rooms/' + roomId);
+    const pickRandom = arr => (arr && arr.length) ? arr[Math.floor(Math.random() * arr.length)] : null;
+
+    const calcPower = squad => {
+      const all = POSITIONS.flatMap(p => squad[p] || []);
+      if (!all.length) return 80;
+      return all.reduce((sum, p) => sum + p.rating, 0) / all.length;
+    };
+
+    const hostEnergy = 0.9 + Math.random() * 0.15;
+    const guestEnergy = 0.9 + Math.random() * 0.15;
+    const hostPower = calcPower(room.host.squad) * hostEnergy;
+    const guestPower = calcPower(room.guest.squad) * guestEnergy;
+
+    let hostGoals = 0;
+    let guestGoals = 0;
+    const events = [];
+    const minutes = [8, 19, 34, 48, 62, 75, 84, 92];
+    const shotTypes = ['صاروخية لا تُصد ولا تُرَد', 'مقوسة R2 في زاوية مستحيلة', 'رأسية متقنة بارتقاء خرافي', 'تسديدة أرضية زاحفة على يمين الحارس', 'ركلة جزاء محكمة في الشباك'];
+
+    const MISS_CHANCE = 0.17;
+    const CARD_CHANCE = 0.10;
+    const VAR_CHANCE = 0.08;
+    const BASE_SAVE = 0.30;
+    const GK_WEIGHT = 0.01;
+
+    minutes.forEach(minute => {
+      const isHostAttacking = Math.random() * (hostPower + guestPower) < hostPower;
+      const attacker = isHostAttacking ? room.host : room.guest;
+      const defender = isHostAttacking ? room.guest : room.host;
+      const attShooter = (Math.random() < 0.6 ? pickRandom(attacker.squad.ATT) : pickRandom(attacker.squad.MID)) || pickRandom(attacker.squad.ATT) || pickRandom(attacker.squad.MID);
+      const assistPlayer = pickRandom(attacker.squad.MID) || pickRandom(attacker.squad.DEF);
+      const defGK = defender.squad.GK[0];
+      const defDefender = pickRandom(defender.squad.DEF);
+      const shotStyle = shotTypes[Math.floor(Math.random() * shotTypes.length)];
+
+      if (!attShooter || !defGK) return; // shouldn't happen once squads are full
+
+      let saveChance = BASE_SAVE + ((defGK.rating || 80) - (attShooter.rating || 80)) * GK_WEIGHT;
+      saveChance = Math.max(0.08, Math.min(0.70, saveChance));
+      const goalChance = Math.max(0.05, 1 - saveChance - MISS_CHANCE - CARD_CHANCE - VAR_CHANCE);
+
+      const rand = Math.random();
+
+      if (rand < goalChance) {
+        if (isHostAttacking) hostGoals++; else guestGoals++;
+        events.push({ minute, type: 'GOAL', text: `⚽ GOALLL!! ${attShooter.name} يسجل هدفاً عالمياً! ${shotStyle}! (تمريرة حاسمة: ${assistPlayer?.name || 'مجهود فردي'})`, score: `${hostGoals} - ${guestGoals}` });
+      } else if (rand < goalChance + saveChance) {
+        events.push({ minute, type: 'SAVE', text: `🧤 تصدي خيالي! الحارس العملاق ${defGK.name} يرتمي بأطراف أصابعه ويبعد تسديدة ${attShooter.name}!`, score: `${hostGoals} - ${guestGoals}` });
+      } else if (rand < goalChance + saveChance + MISS_CHANCE) {
+        events.push({ minute, type: 'MISS', text: `💥 القائم ينوب عن الحارس! تسديدة ${attShooter.name} تصطدم بالقائم وسط ذهول الجميع!`, score: `${hostGoals} - ${guestGoals}` });
+      } else if (rand < goalChance + saveChance + MISS_CHANCE + CARD_CHANCE) {
+        events.push({ minute, type: 'CARD', text: `🟨 بطاقة صفراء! الحكم يوجه إنذاراً للمدافع ${defDefender?.name || 'الدفاع'} بعد تدخل قوي لتوقيف خطورة ${attShooter.name}!`, score: `${hostGoals} - ${guestGoals}` });
+      } else {
+        events.push({ minute, type: 'VAR', text: `🖥️ تقنية الـ VAR تفحص التدخل على ${attShooter.name}... الحكم يشير بمنح ركلة حرة واعدة!`, score: `${hostGoals} - ${guestGoals}` });
+      }
+    });
+
+    const hostPossession = Math.round((hostPower / (hostPower + guestPower)) * 100);
+    const allPlayers = [
+      ...POSITIONS.flatMap(p => room.host.squad[p] || []),
+      ...POSITIONS.flatMap(p => room.guest.squad[p] || [])
+    ];
+    const mvpPlayer = allPlayers.sort((a, b) => b.rating - a.rating)[0] || { name: 'المستضيف', rating: 90 };
+
+    const matchSim = {
+      status: 'simulating',
+      currentTime: 0,
+      hostGoals,
+      guestGoals,
+      events,
+      mvpPlayer,
+      stats: {
+        possession: [hostPossession, 100 - hostPossession],
+        shots: [Math.floor(hostPower / 10), Math.floor(guestPower / 10)],
+        shotsOnTarget: [hostGoals + 2, guestGoals + 2]
+      }
+    };
+
+    roomRef.update({ status: 'simulating', matchSimulation: matchSim });
+
+    if (room.host.id === myPlayerId) {
+      let sec = 0;
+      const interval = setInterval(() => {
+        sec++;
+        roomRef.child('matchSimulation/currentTime').set(Math.min(sec * 9, 90));
+        if (sec >= 10) {
+          clearInterval(interval);
+          let winner = 'draw';
+          if (hostGoals > guestGoals) winner = 'host';
+          else if (guestGoals > hostGoals) winner = 'guest';
+          roomRef.update({ status: 'finished', 'matchSimulation/status': 'finished', winner });
+        }
+      }, 1000);
+    }
+  },
+
   restartGame(roomId, squadMode) {
     const roomRef = db.ref('mazad_rooms/' + roomId);
     const mode = SQUAD_MODES[squadMode] ? squadMode : 'quick';
@@ -338,6 +453,9 @@ const AuctionEngine = {
       'host/squad': emptySquad(),
       'guest/remainingBudget': SQUAD_MODES[mode].budget,
       'guest/squad': emptySquad(),
+      matchSimulation: null,
+      lineupReady: null,
+      winner: null,
       currentRound: null
     }).then(() => {
       roomRef.once('value').then(snapshot => {
