@@ -223,6 +223,43 @@
         </div>
       </section>
 
+      <!-- VIEW 2b: LINEUPS REVEAL (before simulation starts) -->
+      <section id="view-lineup" class="view-section hidden">
+        <div class="lineup-container glass-card">
+          <h2 class="lineup-title">⚽ التشكيلات جاهزة! استعد للمباراة</h2>
+          <div class="lineup-columns">
+            <div class="lineup-col host-col">
+              <h3 id="lineup-host-name" class="lineup-col-name"></h3>
+              <div id="lineup-host-list" class="squad-list"></div>
+            </div>
+            <div class="lineup-col guest-col">
+              <h3 id="lineup-guest-name" class="lineup-col-name"></h3>
+              <div id="lineup-guest-list" class="squad-list"></div>
+            </div>
+          </div>
+
+          <!-- Helper Card Steal Action trigger -->
+          <div id="steal-action-box" class="steal-box hidden">
+            <span>🥷 لديك بطاقة سرقة! اضغط على لاعب من تشكيلتك، ثم على لاعب من الخصم لتبديله!</span>
+            <button id="btn-trigger-steal" class="btn gold-btn sm">تنفيذ السرقة 🥷</button>
+          </div>
+
+          <button id="btn-start-simulation" class="btn btn-primary gold-btn">ابدأ المحاكاة 🏟️</button>
+        </div>
+
+        <!-- Steal confirmation modal -->
+        <div id="steal-confirm-overlay" class="results-overlay hidden">
+          <div class="results-card glass-card glow-border">
+            <p id="steal-confirm-text" class="steal-confirm-text"></p>
+            <div class="steal-confirm-actions">
+              <button id="btn-steal-confirm-yes" class="btn gold-btn sm">تأكيد التبديل ✅</button>
+              <button id="btn-steal-confirm-different" class="btn sm">اختيار لاعب تاني</button>
+              <button id="btn-steal-confirm-cancel" class="btn sm">إلغاء ❌</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- VIEW 3: MATCH SIMULATION (YALLASHOOT STYLE) -->
       <section id="view-match" class="view-section hidden">
         <div class="match-container glass-card">
@@ -248,12 +285,6 @@
                 <div class="team-name" id="sim-guest-name">الضيف</div>
               </div>
             </div>
-          </div>
-
-          <!-- Helper Card Steal Action trigger during match -->
-          <div id="steal-action-box" class="steal-box hidden">
-            <span>🥷 لديك بطاقة سرقة! يمكنك استبدال أي لاعب من تشكيلتك بآخر من الخصم الآن!</span>
-            <button id="btn-trigger-steal" class="btn gold-btn sm">تنفيذ السرقة 🥷</button>
           </div>
 
           <!-- YallaShoot Live Ticker Log -->

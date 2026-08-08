@@ -251,10 +251,33 @@ const PLAYER_DATABASE = {
   ]
 };
 
+// Rarity/probability display: % of players at-or-above this rating, within its
+// own position pool — grounded in the real data instead of an invented number.
+function computeRarityTable() {
+  const table = {};
+  Object.keys(PLAYER_DATABASE).forEach(posKey => {
+    const pool = PLAYER_DATABASE[posKey];
+    const total = pool.length;
+    table[posKey] = {};
+    pool.forEach(p => {
+      if (table[posKey][p.id] !== undefined) return;
+      const atOrAbove = pool.filter(q => q.rating >= p.rating).length;
+      table[posKey][p.id] = Math.max(1, Math.round((atOrAbove / total) * 100));
+    });
+  });
+  return table;
+}
+const RARITY_TABLE = computeRarityTable();
+
+function isIconLegend(name) {
+  return /[👑🌟]/.test(name || '');
+}
+
 const HELPER_CARDS = [
   { id: 'steal', name: 'سرقة لاعب 🥷', desc: 'تبديل لاعب من تشكيلتك بآخر من الخصم!' },
   { id: 'protection', name: 'درع الحماية 🛡️', desc: 'قوة دفاعية +15% أثناء المحاكاة!' },
-  { id: 'extra_chance', name: 'فرصة إضافية 🎲', desc: 'تتيح تجربة 3 بطاقات بدلاً من بطاقتين!' }
+  { id: 'extra_chance', name: 'فرصة إضافية 🎲', desc: 'تتيح تجربة 3 بطاقات بدلاً من بطاقتين!' },
+  { id: 'force_pick', name: 'إجبار الاختيار 🎯', desc: 'تختار أنت أي حقيبة من حقائب الخصم الأربعة يجب عليه فتحها!' }
 ];
 
 const POSITIONS = ['GK', 'DEF', 'MID', 'ATT', 'MGR'];
@@ -299,6 +322,14 @@ const FirebaseEngine = {
     return myPlayerId;
   },
 
+  getRarityPct(item, posKey) {
+    return (item && posKey && RARITY_TABLE[posKey] && RARITY_TABLE[posKey][item.id]) || 50;
+  },
+
+  isIconLegend(name) {
+    return isIconLegend(name);
+  },
+
   enterRoom(roomId, playerName) {
     const finalRoomId = roomId && roomId.trim().length > 0
       ? roomId.trim()
@@ -335,7 +366,8 @@ const FirebaseEngine = {
             briefcases: generateBriefcases('GK', false),
             pickedBriefcaseIndex: null,
             pickNumber: 0,
-            status: 'waiting_pick_1'
+            status: 'waiting_pick_1',
+            forcedIndex: null
           },
           matchSimulation: null
         };
@@ -394,8 +426,13 @@ const FirebaseEngine = {
     const briefcases = [...roomState.turnState.briefcases];
 
     if (!briefcases[briefcaseIndex] || briefcases[briefcaseIndex].isRevealed) return;
+    if (roomState.turnState.forcedIndex != null && briefcaseIndex !== roomState.turnState.forcedIndex) return;
 
     briefcases[briefcaseIndex].isRevealed = true;
+
+    const isHost = roomState.currentTurn === 'host';
+    const activePlayer = isHost ? roomState.host : roomState.guest;
+    const hasExtraChance = activePlayer?.helperCard?.id === 'extra_chance';
 
     if (roomState.turnState.status === 'waiting_pick_1') {
       roomRef.child('turnState').update({
@@ -405,31 +442,50 @@ const FirebaseEngine = {
         status: 'picked_1_pending_deal'
       });
     } else if (roomState.turnState.status === 'waiting_pick_2') {
-      // Pick 2 -> AUTO DEAL!
+      if (hasExtraChance) {
+        // Extra-chance card grants a 3rd attempt instead of auto-finalizing
+        roomRef.child('turnState').update({
+          briefcases: briefcases,
+          pickedBriefcaseIndex: briefcaseIndex,
+          pickNumber: 2,
+          status: 'picked_2_pending_deal'
+        });
+      } else {
+        roomRef.child('turnState').update({
+          briefcases: briefcases,
+          pickedBriefcaseIndex: briefcaseIndex,
+          pickNumber: 2,
+          status: 'finished_turn'
+        });
+        this.finalizeSelection(roomId, roomState, briefcases[briefcaseIndex]);
+      }
+    } else if (roomState.turnState.status === 'waiting_pick_3') {
       roomRef.child('turnState').update({
         briefcases: briefcases,
         pickedBriefcaseIndex: briefcaseIndex,
-        pickNumber: 2,
+        pickNumber: 3,
         status: 'finished_turn'
       });
-
-      this.finalizeSelection(roomId, roomState, briefcases[briefcaseIndex]);
+      this.finalizeSelection(roomId, roomState, briefcases[briefcaseIndex], true);
     }
   },
 
   confirmDeal(roomId, roomState) {
+    // Card is only consumed if the 3rd attempt is actually taken (see pickBriefcase's
+    // waiting_pick_3 branch) — dealing after pick 2 keeps the card unused for next turn.
     const selectedB = roomState.turnState.briefcases[roomState.turnState.pickedBriefcaseIndex];
     this.finalizeSelection(roomId, roomState, selectedB);
   },
 
-  rejectDeal(roomId) {
+  rejectDeal(roomId, roomState) {
     const roomRef = db.ref('dond_rooms/' + roomId);
+    const nextStatus = roomState.turnState.status === 'picked_2_pending_deal' ? 'waiting_pick_3' : 'waiting_pick_2';
     roomRef.child('turnState').update({
-      status: 'waiting_pick_2'
+      status: nextStatus
     });
   },
 
-  finalizeSelection(roomId, roomState, briefcase) {
+  finalizeSelection(roomId, roomState, briefcase, consumeExtraChance) {
     const roomRef = db.ref('dond_rooms/' + roomId);
     const isHost = roomState.currentTurn === 'host';
     const playerKey = isHost ? 'host' : 'guest';
@@ -445,8 +501,13 @@ const FirebaseEngine = {
     const playerObj = roomState[playerKey];
     const newSquad = { ...playerObj.squad, [posKey]: briefcase.item };
     let newHelper = playerObj.helperCard || null;
+    let helperJustDrawn = null;
     if (briefcase.helperCard && !newHelper) {
       newHelper = briefcase.helperCard;
+      helperJustDrawn = briefcase.helperCard;
+    } else if (consumeExtraChance && playerObj.helperCard && playerObj.helperCard.id === 'extra_chance') {
+      // Card consumed only for the acting player (playerKey) after their 3rd pick completes
+      newHelper = null;
     }
 
     roomRef.child(playerKey).update({
@@ -456,10 +517,25 @@ const FirebaseEngine = {
 
     roomRef.child('turnState/briefcases').set(allRevealedBriefcases);
 
+    if (helperJustDrawn) {
+      this.notify(roomId, {
+        kind: 'helper_drawn',
+        text: `🎁 حصل ${playerObj.name} على كارت مساعدة: ${helperJustDrawn.name}! (${helperJustDrawn.desc})`
+      });
+    }
+
+    // Local patched snapshot so the delayed turn-transition below always sees
+    // THIS pick's own update, even though `roomState` is a stale param frozen
+    // at click time (fixes MGR/last-pick being dropped from the match simulation).
+    const patchedRoomState = {
+      ...roomState,
+      [playerKey]: { ...playerObj, squad: newSquad, helperCard: newHelper }
+    };
+
     // Transition turn after 3.5 seconds
     setTimeout(() => {
-      let nextTurn = roomState.currentTurn;
-      let nextPosIndex = roomState.positionIndex;
+      let nextTurn = patchedRoomState.currentTurn;
+      let nextPosIndex = patchedRoomState.positionIndex;
 
       if (isHost) {
         nextTurn = 'guest';
@@ -469,11 +545,11 @@ const FirebaseEngine = {
       }
 
       if (nextPosIndex >= POSITIONS.length) {
-        // Start simulation!
-        this.startMatchSimulation(roomId, roomState);
+        // Draft complete — show both lineups before the simulation starts
+        roomRef.update({ status: 'lineup' });
       } else {
         const nextPosKey = POSITIONS[nextPosIndex];
-        const hasHelperObj = isHost ? !!roomState.guest?.helperCard : !!roomState.host?.helperCard;
+        const hasHelperObj = isHost ? !!patchedRoomState.guest?.helperCard : !!patchedRoomState.host?.helperCard;
         const newBriefcases = generateBriefcases(nextPosKey, hasHelperObj);
 
         roomRef.update({
@@ -485,7 +561,8 @@ const FirebaseEngine = {
             briefcases: newBriefcases,
             pickedBriefcaseIndex: null,
             pickNumber: 0,
-            status: 'waiting_pick_1'
+            status: 'waiting_pick_1',
+            forcedIndex: null
           }
         });
       }
@@ -494,8 +571,9 @@ const FirebaseEngine = {
 
   startMatchSimulation(roomId, roomState) {
     const roomRef = db.ref('dond_rooms/' + roomId);
-    
-    // Power calculations
+
+    // Power calculations — team rating average, boosted by helper card + a
+    // per-match energy roll (freshness on the day, not a persisted stat)
     const calcPower = (squad, helper) => {
       let r = 0;
       ['GK', 'DEF', 'MID', 'ATT', 'MGR'].forEach(k => { r += (squad[k]?.rating || 80); });
@@ -504,8 +582,10 @@ const FirebaseEngine = {
       return p;
     };
 
-    const hostPower = calcPower(roomState.host.squad, roomState.host.helperCard);
-    const guestPower = calcPower(roomState.guest.squad, roomState.guest.helperCard);
+    const hostEnergy = 0.9 + Math.random() * 0.15;   // 0.90–1.05, ephemeral per match
+    const guestEnergy = 0.9 + Math.random() * 0.15;
+    const hostPower = calcPower(roomState.host.squad, roomState.host.helperCard) * hostEnergy;
+    const guestPower = calcPower(roomState.guest.squad, roomState.guest.helperCard) * guestEnergy;
 
     let hostGoals = 0;
     let guestGoals = 0;
@@ -513,61 +593,69 @@ const FirebaseEngine = {
     const minutes = [8, 19, 34, 48, 62, 75, 84, 92];
     const shotTypes = ['صاروخية لا تُصد ولا تُرَد', 'مقوسة R2 في زاوية مستحيلة', 'رأسية متقنة بارتقاء خرافي', 'تسديدة أرضية زاحفة على يمين الحارس', 'ركلة جزاء محكمة في الشباك'];
 
+    // Outcome shares that don't hinge on goalkeeper skill — save% is computed
+    // per-event below from the actual GK-vs-shooter rating gap.
+    const MISS_CHANCE = 0.17;
+    const CARD_CHANCE = 0.10;
+    const VAR_CHANCE = 0.08;
+    const BASE_SAVE = 0.30;
+    const GK_WEIGHT = 0.01; // each rating point of (GK - shooter) swings save% by 1pt
+
     minutes.forEach((minute, index) => {
       const isHostAttacking = Math.random() * (hostPower + guestPower) < hostPower;
       const attacker = isHostAttacking ? roomState.host : roomState.guest;
       const defender = isHostAttacking ? roomState.guest : roomState.host;
-      const attPlayer = (Math.random() < 0.6) ? attacker.squad.ATT : attacker.squad.MID;
-      const assistPlayer = (attPlayer === attacker.squad.ATT) ? attacker.squad.MID : attacker.squad.DEF;
+      const attShooter = (Math.random() < 0.6) ? attacker.squad.ATT : attacker.squad.MID;
+      const assistPlayer = (attShooter === attacker.squad.ATT) ? attacker.squad.MID : attacker.squad.DEF;
       const defGK = defender.squad.GK;
       const shotStyle = shotTypes[Math.floor(Math.random() * shotTypes.length)];
 
+      let saveChance = BASE_SAVE + ((defGK?.rating || 80) - (attShooter?.rating || 80)) * GK_WEIGHT;
+      saveChance = Math.max(0.08, Math.min(0.70, saveChance));
+      const goalChance = Math.max(0.05, 1 - saveChance - MISS_CHANCE - CARD_CHANCE - VAR_CHANCE);
+
       const rand = Math.random();
 
-      if (rand < 0.42) {
+      if (rand < goalChance) {
         if (isHostAttacking) hostGoals++; else guestGoals++;
         events.push({
           minute,
           type: 'GOAL',
-          text: `⚽ GOALLL!! ${attPlayer.name} يسجل هدفاً عالمياً! ${shotStyle}! (تمريرة حاسمة: ${assistPlayer?.name || 'مجهود فردي'})`,
+          text: `⚽ GOALLL!! ${attShooter.name} يسجل هدفاً عالمياً! ${shotStyle}! (تمريرة حاسمة: ${assistPlayer?.name || 'مجهود فردي'})`,
           score: `${hostGoals} - ${guestGoals}`
         });
-      } else if (rand < 0.65) {
+      } else if (rand < goalChance + saveChance) {
         events.push({
           minute,
           type: 'SAVE',
-          text: `🧤 تصدي خيالي! الحارس العملاق ${defGK.name} يرتمي بأطراف أصابعه ويبعد تسديدة ${attPlayer.name}!`,
+          text: `🧤 تصدي خيالي! الحارس العملاق ${defGK.name} يرتمي بأطراف أصابعه ويبعد تسديدة ${attShooter.name}!`,
           score: `${hostGoals} - ${guestGoals}`
         });
-      } else if (rand < 0.82) {
+      } else if (rand < goalChance + saveChance + MISS_CHANCE) {
         events.push({
           minute,
           type: 'MISS',
-          text: `💥 القائم ينوب عن الحارس! تسديدة ${attPlayer.name} تصطدم بالقائم وسط ذهول الجميع!`,
+          text: `💥 القائم ينوب عن الحارس! تسديدة ${attShooter.name} تصطدم بالقائم وسط ذهول الجميع!`,
           score: `${hostGoals} - ${guestGoals}`
         });
-      } else if (rand < 0.92) {
+      } else if (rand < goalChance + saveChance + MISS_CHANCE + CARD_CHANCE) {
         events.push({
           minute,
           type: 'CARD',
-          text: `🟨 بطاقة صفراء! الحكم يوجه إنذاراً للمدافع ${defender.squad.DEF.name} بعد تدخل قوي لتوقيف خطورة ${attPlayer.name}!`,
+          text: `🟨 بطاقة صفراء! الحكم يوجه إنذاراً للمدافع ${defender.squad.DEF.name} بعد تدخل قوي لتوقيف خطورة ${attShooter.name}!`,
           score: `${hostGoals} - ${guestGoals}`
         });
       } else {
         events.push({
           minute,
           type: 'VAR',
-          text: `🖥️ تقنية الـ VAR تفحص اللقطة... الحكم يشير بمنح ركلة حرة واعدة لصالح ${attacker.name}!`,
+          text: `🖥️ تقنية الـ VAR تفحص التدخل على ${attShooter.name}... الحكم يشير بمنح ركلة حرة واعدة!`,
           score: `${hostGoals} - ${guestGoals}`
         });
       }
     });
 
-    const hostChem = calcSquadChemistry(roomState.host.squad);
-    const guestChem = calcSquadChemistry(roomState.guest.squad);
-
-    const hostPowerTotal = hostPower + hostChem;
-    const guestPowerTotal = guestPower + guestChem;
+    const hostPossession = Math.round((hostPower / (hostPower + guestPower)) * 100);
 
     // MVP Determination
     const allPlayers = [
@@ -584,10 +672,9 @@ const FirebaseEngine = {
       events,
       mvpPlayer,
       stats: {
-        possession: [hostPos, 100 - hostPos],
-        shots: [Math.floor(hostPowerTotal / 10), Math.floor(guestPowerTotal / 10)],
-        shotsOnTarget: [hostGoals + 2, guestGoals + 2],
-        chemistry: [hostChem, guestChem]
+        possession: [hostPossession, 100 - hostPossession],
+        shots: [Math.floor(hostPower / 10), Math.floor(guestPower / 10)],
+        shotsOnTarget: [hostGoals + 2, guestGoals + 2]
       }
     };
 
@@ -620,6 +707,58 @@ const FirebaseEngine = {
     }
   },
 
+  confirmLineupReady(roomId, roomState) {
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    roomRef.child('lineupReady').transaction(current => current ? current : true)
+      .then(result => {
+        if (result.committed && roomState.host.id === myPlayerId) {
+          // Only the host client actually starts the simulation (matches ticker ownership below)
+          this.startMatchSimulation(roomId, roomState);
+        }
+      });
+  },
+
+  requestSteal(roomId, roomState, myPos, oppPos) {
+    // Restricted to the lineup-reveal screen: both squads are complete there,
+    // and the match outcome is pre-computed synchronously once simulation starts.
+    if (roomState.status !== 'lineup') return;
+    if (myPos !== oppPos) return; // same-position swap only, keeps squads structurally valid
+    const isHost = roomState.host.id === myPlayerId;
+    const myKey = isHost ? 'host' : 'guest';
+    const oppKey = isHost ? 'guest' : 'host';
+    const me = roomState[myKey];
+    const opp = roomState[oppKey];
+    if (!me || !opp) return;
+    if (!me.helperCard || me.helperCard.id !== 'steal') return;
+    const givenPlayer = me.squad[myPos];
+    const takenPlayer = opp.squad[oppPos];
+    if (!givenPlayer || !takenPlayer) return;
+
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    const updates = {};
+    updates[`${myKey}/squad/${myPos}`] = takenPlayer;
+    updates[`${oppKey}/squad/${oppPos}`] = givenPlayer;
+    updates[`${myKey}/helperCard`] = null;
+
+    return roomRef.update(updates).then(() => {
+      this.notify(roomId, {
+        kind: 'steal',
+        text: `🥷 تم سرقة ${takenPlayer.name} منك واستبداله بـ ${givenPlayer.name}!`
+      });
+    });
+  },
+
+  setForcedPick(roomId, roomState, forcedIndex) {
+    if (roomState.turnState.status !== 'waiting_pick_1') return; // only valid before the turn's first pick
+    const isHost = roomState.currentTurn === 'host';
+    const nonActiveKey = isHost ? 'guest' : 'host';
+    const nonActive = roomState[nonActiveKey];
+    if (!nonActive || nonActive.helperCard?.id !== 'force_pick') return;
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    roomRef.child('turnState/forcedIndex').set(forcedIndex);
+    roomRef.child(nonActiveKey + '/helperCard').set(null);
+  },
+
   sendEmoji(roomId, emojiSymbol) {
     if (!roomId) return;
     const roomRef = db.ref('dond_rooms/' + roomId);
@@ -629,6 +768,19 @@ const FirebaseEngine = {
       timestamp: Date.now()
     });
   },
+
+  notify(roomId, notification) {
+    if (!roomId) return;
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    roomRef.child('lastNotification').set({
+      ...notification,
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      senderId: myPlayerId,
+      timestamp: Date.now()
+    });
+  },
+
+  restartGame(roomId) {
     const roomRef = db.ref('dond_rooms/' + roomId);
     roomRef.update({
       status: 'drafting',
@@ -644,9 +796,11 @@ const FirebaseEngine = {
         briefcases: generateBriefcases('GK', false),
         pickedBriefcaseIndex: null,
         pickNumber: 0,
-        status: 'waiting_pick_1'
+        status: 'waiting_pick_1',
+        forcedIndex: null
       },
-      matchSimulation: null
+      matchSimulation: null,
+      lineupReady: null
     });
   }
 };
