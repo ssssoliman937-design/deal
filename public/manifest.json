@@ -1,7 +1,7 @@
 {
-  "name": "Deal or No Deal Football Draft",
-  "short_name": "DOND Football",
-  "description": "تحدي تشكيلات كرة القدم أونلاين عبر الإنترنت - Deal or No Deal Draft",
+  "name": "مركز الألعاب — Deal or No Deal و المزاد",
+  "short_name": "مركز الألعاب",
+  "description": "لعبتين لتشكيلات كرة القدم أونلاين: Deal or No Deal Football و المزاد",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0e17",

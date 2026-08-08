@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المزاد 💰⚽</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <link rel="icon" type="image/png" href="/dond_app_icon.png">
+  <link rel="apple-touch-icon" href="/dond_app_icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#f59e0b">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/mazad/css/mazad.css">
+</head>
+<body>
+
+  <div class="stadium-bg"></div>
+  <div class="light-beam beam-left"></div>
+  <div class="light-beam beam-right"></div>
+
+  <div id="app" class="app-container">
+    <header class="top-nav glass-card">
+      <div class="nav-brand">
+        <a href="/" class="hub-back-link" title="رجوع لصفحة الألعاب">🏠</a>
+        <span class="game-logo">💰 <span class="gold-text">المزاد</span></span>
+      </div>
+      <div id="room-info-bar" class="room-info-bar hidden">
+        <div class="info-badge">
+          <span class="label">رقم الغرفة:</span>
+          <span id="display-room-id" class="value room-code">----</span>
+          <button id="btn-copy-code" class="btn-icon" title="نسخ الكود">📋</button>
+        </div>
+        <div class="info-badge">
+          <span class="label">دورك:</span>
+          <span id="user-role-badge" class="role-pill">...</span>
+        </div>
+      </div>
+    </header>
+
+    <div id="notification-banner" class="notification-banner hidden"></div>
+
+    <main>
+      <!-- VIEW 1: LOBBY -->
+      <section id="view-lobby" class="view-section active">
+        <div class="lobby-container glass-card glow-border">
+          <h1 class="lobby-title">💰 المزاد ⚽</h1>
+          <p class="lobby-desc">ميزانية محدودة، نجوم برايتنج 90+، ومزايدة حية لحد ما حد ينسحب.</p>
+
+          <input type="text" id="player-name-input" class="mazad-input" placeholder="اكتب اسمك هنا..." maxlength="16">
+
+          <div class="mode-picker" id="mode-picker">
+            <label class="mode-card">
+              <input type="radio" name="squadMode" value="quick" checked>
+              <div class="mode-card-body">
+                <span class="mode-icon">⚡</span>
+                <span class="mode-name">سريع</span>
+                <span class="mode-detail">5 خانات — ميزانية 250,000,000</span>
+              </div>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="squadMode" value="full">
+              <div class="mode-card-body">
+                <span class="mode-icon">🏆</span>
+                <span class="mode-name">الميزانية الكاملة</span>
+                <span class="mode-detail">12 خانة — ميزانية 1,000,000,000</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="lobby-actions">
+            <div class="lobby-action-block">
+              <input type="text" id="create-room-id" class="mazad-input" placeholder="كود مخصص (اختياري)" maxlength="10">
+              <button id="btn-create-room" class="btn btn-primary gold-btn">إنشاء مزاد جديد 💰</button>
+            </div>
+            <div class="lobby-divider">أو</div>
+            <div class="lobby-action-block">
+              <input type="text" id="join-room-id" class="mazad-input" placeholder="أدخل كود الغرفة">
+              <button id="btn-join-room" class="btn btn-secondary">الانضمام لمزاد ⚽</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: AUCTION -->
+      <section id="view-auction" class="view-section hidden">
+        <div class="auction-layout">
+
+          <div class="budgets-row">
+            <div class="budget-box host-budget">
+              <span class="budget-name" id="auction-host-name">المستضيف</span>
+              <span class="budget-amount" id="auction-host-budget">0</span>
+            </div>
+            <div class="budget-vs">VS</div>
+            <div class="budget-box guest-budget">
+              <span class="budget-name" id="auction-guest-name">الضيف</span>
+              <span class="budget-amount" id="auction-guest-budget">0</span>
+            </div>
+          </div>
+
+          <div class="auction-stage glass-card glow-border">
+            <div class="auction-position-label" id="auction-position-label">حارس المرمى 🧤</div>
+
+            <!-- Bidding candidate -->
+            <div id="auction-bidding-panel" class="auction-panel hidden">
+              <div class="auction-fifa-card" id="auction-candidate-card"></div>
+              <div class="bid-status">
+                <span class="bid-current-label">أعلى مزايدة</span>
+                <span class="bid-current-amount" id="bid-current-amount">0</span>
+              </div>
+              <div class="bid-turn-indicator" id="bid-turn-indicator">دورك تزايد</div>
+              <div class="bid-controls" id="bid-controls">
+                <!-- raise buttons injected dynamically -->
+              </div>
+              <button id="btn-pass-bid" class="btn btn-secondary sm">انسحب 🏳️</button>
+            </div>
+
+            <!-- Uncontested reveal -->
+            <div id="auction-uncontested-panel" class="auction-panel hidden">
+              <div class="auction-fifa-card" id="uncontested-candidate-card"></div>
+              <p class="uncontested-text" id="uncontested-text"></p>
+            </div>
+
+            <!-- Round result reveal -->
+            <div id="auction-result-panel" class="auction-panel hidden">
+              <h3 class="result-title" id="result-title"></h3>
+              <div class="result-cards">
+                <div class="result-card-block">
+                  <span class="result-card-label">اللاعب المتزايد عليه</span>
+                  <div class="auction-fifa-card sm" id="result-candidate-card"></div>
+                </div>
+                <div class="result-card-block">
+                  <span class="result-card-label">بونص الفايز 🎁</span>
+                  <div class="auction-fifa-card sm" id="result-bonus-card"></div>
+                </div>
+                <div class="result-card-block">
+                  <span class="result-card-label">تعويض الخسران 🤝</span>
+                  <div class="auction-fifa-card sm" id="result-consolation-card"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mini-squads-row">
+            <div class="mini-squad-box">
+              <span class="mini-squad-title" id="mini-host-title">تشكيلة المستضيف</span>
+              <div id="mini-host-squad" class="mini-squad-slots"></div>
+            </div>
+            <div class="mini-squad-box">
+              <span class="mini-squad-title" id="mini-guest-title">تشكيلة الضيف</span>
+              <div id="mini-guest-squad" class="mini-squad-slots"></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- VIEW 3: FINAL RESULTS -->
+      <section id="view-final" class="view-section hidden">
+        <div class="final-container glass-card glow-border">
+          <h2 class="final-title">🏆 التشكيلتان جاهزتان!</h2>
+          <div class="final-columns">
+            <div class="final-col">
+              <h3 id="final-host-name"></h3>
+              <span class="final-budget" id="final-host-budget"></span>
+              <div id="final-host-squad" class="squad-list"></div>
+            </div>
+            <div class="final-col">
+              <h3 id="final-guest-name"></h3>
+              <span class="final-budget" id="final-guest-budget"></span>
+              <div id="final-guest-squad" class="squad-list"></div>
+            </div>
+          </div>
+          <button id="btn-restart-auction" class="btn btn-primary gold-btn">مزاد جديد 🔄</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">💰 المزاد — جزء من <strong>مركز الألعاب</strong></footer>
+  </div>
+
+  <script src="/js/sound-effects.js"></script>
+  <script src="/js/player-database.js"></script>
+  <script src="/mazad/js/auction-engine.js"></script>
+  <script src="/mazad/js/app.js"></script>
+</body>
+</html>

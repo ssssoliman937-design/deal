@@ -1,13 +1,21 @@
-// Service Worker for Deal or No Deal Football Draft PWA
-const CACHE_NAME = 'dond-football-v1';
+// Service Worker for مركز الألعاب (Deal or No Deal + المزاد) PWA
+const CACHE_NAME = 'games-hub-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/css/style.css',
   '/js/sound-effects.js',
+  '/js/player-database.js',
+  '/manifest.json',
+  '/deal/',
+  '/deal/index.html',
   '/js/firebase-engine.js',
   '/js/app.js',
-  '/manifest.json'
+  '/mazad/',
+  '/mazad/index.html',
+  '/mazad/css/mazad.css',
+  '/mazad/js/auction-engine.js',
+  '/mazad/js/app.js'
 ];
 
 self.addEventListener('install', (event) => {
