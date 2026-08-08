@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const pickedCardPreview = document.getElementById('picked-card-preview');
   const btnDeal = document.getElementById('btn-deal');
   const btnNoDeal = document.getElementById('btn-no-deal');
+  const btnDumpOpponent = document.getElementById('btn-dump-opponent');
   const missedCardsReveal = document.getElementById('missed-cards-reveal');
   const missedCardsGrid = document.getElementById('missed-cards-grid');
 
@@ -230,6 +231,12 @@ document.addEventListener('DOMContentLoaded', () => {
     triggerHaptic([30, 40]);
     window.soundFX.playClick();
     FirebaseEngine.rejectDeal(currentRoomId, roomState);
+  });
+
+  btnDumpOpponent.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.dumpOnOpponent(currentRoomId, roomState);
   });
 
   btnStartSimulation.addEventListener('click', () => {
@@ -390,10 +397,6 @@ document.addEventListener('DOMContentLoaded', () => {
       waitingNotice.classList.add('hidden');
     }
 
-    const myHelper = myRole === 'host' ? roomState.host?.helperCard : (myRole === 'guest' ? roomState.guest?.helperCard : null);
-    const isForcedPickerTurn = !isMyTurn && myRole !== 'spectator' && myHelper?.id === 'force_pick'
-      && roomState.turnState.status === 'waiting_pick_1' && roomState.turnState.forcedIndex == null;
-
     briefcases.forEach((b, index) => {
       const bCard = document.createElement('div');
       bCard.className = `briefcase-card ${b.isRevealed ? 'revealed' : ''} ${!isMyTurn ? 'disabled-turn' : ''}`;
@@ -408,18 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         const pendingDeal = roomState.turnState.status === 'picked_1_pending_deal' || roomState.turnState.status === 'picked_2_pending_deal';
-        const forcedIndex = roomState.turnState.forcedIndex;
-        const isForcedOut = forcedIndex != null && index !== forcedIndex;
 
-        if (isForcedPickerTurn) {
-          bCard.style.cursor = 'pointer';
-          bCard.classList.add('steal-selectable');
-          bCard.onclick = () => {
-            window.soundFX.playClick();
-            showNotification('🎯 تم إجبار الخصم على فتح الحقيبة دي!');
-            FirebaseEngine.setForcedPick(currentRoomId, roomState, index);
-          };
-        } else if (isMyTurn && !pendingDeal && !isForcedOut) {
+        if (isMyTurn && !pendingDeal) {
           bCard.style.cursor = 'pointer';
           bCard.onclick = () => {
             window.soundFX.playClick();
@@ -454,19 +447,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pickedB && pickedB.item) {
         pickedCardPreview.innerHTML = `
           <div class="fifa-card inline">
-            <span class="fifa-rating">${pickedB.item.rating}</span> - 
+            <span class="fifa-rating">${pickedB.item.rating}</span> -
             <span class="fifa-name">${pickedB.item.name}</span> (${pickedB.item.club})
             ${pickedB.helperCard ? `<div class="helper-tag inline">${pickedB.helperCard.name}</div>` : ''}
           </div>
         `;
       }
+      const activePlayer = isHostTurn ? roomState.host : roomState.guest;
+      btnDumpOpponent.classList.toggle('hidden', activePlayer?.helperCard?.id !== 'force_pick' || !roomState.guest);
     } else {
       decisionPanel.classList.add('hidden');
     }
   }
 
-  function helperBadgeText(playerObj) {
-    return playerObj.helperCard ? playerObj.helperCard.name : 'بدون مساعدة';
+  function helperBadgeText(playerObj, ownerRole) {
+    if (!playerObj.helperCard) return 'بدون مساعدة';
+    if (myRole === ownerRole || myRole === 'spectator') return playerObj.helperCard.name;
+    return '🎁 كارت خاص';
   }
 
   function renderSquads() {

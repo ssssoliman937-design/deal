@@ -277,7 +277,7 @@ const HELPER_CARDS = [
   { id: 'steal', name: 'سرقة لاعب 🥷', desc: 'تبديل لاعب من تشكيلتك بآخر من الخصم!' },
   { id: 'protection', name: 'درع الحماية 🛡️', desc: 'قوة دفاعية +15% أثناء المحاكاة!' },
   { id: 'extra_chance', name: 'فرصة إضافية 🎲', desc: 'تتيح تجربة 3 بطاقات بدلاً من بطاقتين!' },
-  { id: 'force_pick', name: 'إجبار الاختيار 🎯', desc: 'تختار أنت أي حقيبة من حقائب الخصم الأربعة يجب عليه فتحها!' }
+  { id: 'force_pick', name: 'إجبار الاختيار 🎯', desc: 'طلعلك لاعب مش عايزه؟ جبّر خصمك ياخده بدل مركزه، وياخدلك إنت فرصة تختار لاعب تاني!' }
 ];
 
 const POSITIONS = ['GK', 'DEF', 'MID', 'ATT', 'MGR'];
@@ -366,8 +366,7 @@ const FirebaseEngine = {
             briefcases: generateBriefcases('GK', false),
             pickedBriefcaseIndex: null,
             pickNumber: 0,
-            status: 'waiting_pick_1',
-            forcedIndex: null
+            status: 'waiting_pick_1'
           },
           matchSimulation: null
         };
@@ -426,7 +425,6 @@ const FirebaseEngine = {
     const briefcases = [...roomState.turnState.briefcases];
 
     if (!briefcases[briefcaseIndex] || briefcases[briefcaseIndex].isRevealed) return;
-    if (roomState.turnState.forcedIndex != null && briefcaseIndex !== roomState.turnState.forcedIndex) return;
 
     briefcases[briefcaseIndex].isRevealed = true;
 
@@ -537,7 +535,13 @@ const FirebaseEngine = {
       let nextTurn = patchedRoomState.currentTurn;
       let nextPosIndex = patchedRoomState.positionIndex;
 
-      if (isHost) {
+      if (roomState.turnState.dumpedThisPosition) {
+        // The opponent's slot for this position was already force-filled by
+        // dumpOnOpponent() — the position is fully resolved either way, so
+        // skip straight to the next one instead of passing the turn.
+        nextTurn = 'host';
+        nextPosIndex++;
+      } else if (isHost) {
         nextTurn = 'guest';
       } else {
         nextTurn = 'host';
@@ -561,8 +565,7 @@ const FirebaseEngine = {
             briefcases: newBriefcases,
             pickedBriefcaseIndex: null,
             pickNumber: 0,
-            status: 'waiting_pick_1',
-            forcedIndex: null
+            status: 'waiting_pick_1'
           }
         });
       }
@@ -748,15 +751,49 @@ const FirebaseEngine = {
     });
   },
 
-  setForcedPick(roomId, roomState, forcedIndex) {
-    if (roomState.turnState.status !== 'waiting_pick_1') return; // only valid before the turn's first pick
+  dumpOnOpponent(roomId, roomState) {
+    // Usable right when you reveal a player you don't want, at the same
+    // decision point as Deal/No Deal: forces that player onto the OPPONENT's
+    // squad for this position (they skip their own pick for it), then gives
+    // the active player a fresh pick for the same position instead.
+    if (!['picked_1_pending_deal', 'picked_2_pending_deal'].includes(roomState.turnState.status)) return;
     const isHost = roomState.currentTurn === 'host';
-    const nonActiveKey = isHost ? 'guest' : 'host';
-    const nonActive = roomState[nonActiveKey];
-    if (!nonActive || nonActive.helperCard?.id !== 'force_pick') return;
+    const activeKey = isHost ? 'host' : 'guest';
+    const oppKey = isHost ? 'guest' : 'host';
+    const activePlayer = roomState[activeKey];
+    const opp = roomState[oppKey];
+    if (!opp) return;
+    if (!activePlayer.helperCard || activePlayer.helperCard.id !== 'force_pick') return;
+
+    const posKey = POSITIONS[roomState.positionIndex];
+    const briefcase = roomState.turnState.briefcases[roomState.turnState.pickedBriefcaseIndex];
+    if (!briefcase || !briefcase.item) return;
+
     const roomRef = db.ref('dond_rooms/' + roomId);
-    roomRef.child('turnState/forcedIndex').set(forcedIndex);
-    roomRef.child(nonActiveKey + '/helperCard').set(null);
+    const newOppSquad = { ...opp.squad, [posKey]: briefcase.item };
+    const allRevealed = roomState.turnState.briefcases.map(b => ({ ...b, isRevealed: true }));
+
+    roomRef.child(oppKey).update({ squad: newOppSquad });
+    roomRef.child(activeKey + '/helperCard').set(null);
+    roomRef.child('turnState/briefcases').set(allRevealed);
+
+    this.notify(roomId, {
+      kind: 'dump',
+      text: `🎯 ${activePlayer.name} أجبر ${opp.name} ياخد ${briefcase.item.name} في مركز ${POSITION_NAMES_AR[posKey]}! و${activePlayer.name} بياخد فرصة يختار لاعب تاني.`
+    });
+
+    setTimeout(() => {
+      const newBriefcases = generateBriefcases(posKey, false);
+      roomRef.child('turnState').set({
+        positionKey: posKey,
+        positionNameAr: POSITION_NAMES_AR[posKey],
+        briefcases: newBriefcases,
+        pickedBriefcaseIndex: null,
+        pickNumber: 0,
+        status: 'waiting_pick_1',
+        dumpedThisPosition: true
+      });
+    }, 3500);
   },
 
   sendEmoji(roomId, emojiSymbol) {
@@ -796,8 +833,7 @@ const FirebaseEngine = {
         briefcases: generateBriefcases('GK', false),
         pickedBriefcaseIndex: null,
         pickNumber: 0,
-        status: 'waiting_pick_1',
-        forcedIndex: null
+        status: 'waiting_pick_1'
       },
       matchSimulation: null,
       lineupReady: null
