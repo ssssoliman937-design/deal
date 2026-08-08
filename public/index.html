@@ -166,7 +166,14 @@
         <div class="draft-layout">
           <!-- Left / Center: Briefcases & Deal Decisions -->
           <div class="draft-stage glass-card">
-            
+
+            <!-- Pre-pick helper card actions (random_pick / free_pick) -->
+            <div id="prepick-action-bar" class="steal-box hidden">
+              <span id="prepick-action-text"></span>
+              <button id="btn-use-random-pick" class="btn gold-btn sm hidden">حظ عشوائي 🎰</button>
+              <button id="btn-use-free-pick" class="btn gold-btn sm hidden">اختيار حر 👁️</button>
+            </div>
+
             <div id="briefcases-container" class="briefcases-grid">
               <!-- 4 Briefcases rendered dynamically -->
             </div>

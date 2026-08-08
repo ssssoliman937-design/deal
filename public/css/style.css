@@ -630,6 +630,56 @@ body {
 .owner-name { font-weight: 800; font-size: 1rem; }
 .helper-badge { font-size: 0.75rem; background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 10px; color: var(--gold-primary); }
 
+.card-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-inline-start: 5px;
+  border-radius: 50%;
+  background: rgba(255, 215, 0, 0.18);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+  color: var(--gold-primary);
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+}
+
+.card-info-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 135%;
+  right: 50%;
+  transform: translateX(50%);
+  background: rgba(10, 10, 20, 0.96);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  width: 190px;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  z-index: 60;
+}
+
+.card-info-icon:hover::after,
+.card-info-icon:focus::after {
+  opacity: 1;
+  visibility: visible;
+}
+
 .squad-list {
   display: flex;
   flex-direction: column;

@@ -275,9 +275,11 @@ function isIconLegend(name) {
 
 const HELPER_CARDS = [
   { id: 'steal', name: 'سرقة لاعب 🥷', desc: 'تبديل لاعب من تشكيلتك بآخر من الخصم!' },
-  { id: 'protection', name: 'درع الحماية 🛡️', desc: 'قوة دفاعية +15% أثناء المحاكاة!' },
+  { id: 'protection', name: 'درع الحماية 🛡️', desc: 'قوة دفاعية +15% أثناء المحاكاة، وتقدر تحمي لاعب واحد من تشكيلتك من السرقة!' },
   { id: 'extra_chance', name: 'فرصة إضافية 🎲', desc: 'تتيح تجربة 3 بطاقات بدلاً من بطاقتين!' },
-  { id: 'force_pick', name: 'إجبار الاختيار 🎯', desc: 'طلعلك لاعب مش عايزه؟ جبّر خصمك ياخده بدل مركزه، وياخدلك إنت فرصة تختار لاعب تاني!' }
+  { id: 'force_pick', name: 'إجبار الاختيار 🎯', desc: 'طلعلك لاعب مش عايزه؟ جبّر خصمك ياخده بدل مركزه، وياخدلك إنت فرصة تختار لاعب تاني!' },
+  { id: 'random_pick', name: 'حظ عشوائي 🎰', desc: 'تكشف البطاقات الأربعة كلها وتاخد واحدة عشوائي فورًا من غير ما تختار بنفسك!' },
+  { id: 'free_pick', name: 'اختيار حر 👁️', desc: 'تكشف البطاقات الأربعة كلها وتختار إنت بنفسك أي واحدة عايزها، مضمونة 100%!' }
 ];
 
 const POSITIONS = ['GK', 'DEF', 'MID', 'ATT', 'MGR'];
@@ -466,7 +468,7 @@ const FirebaseEngine = {
         pickNumber: 3,
         status: 'finished_turn'
       });
-      this.finalizeSelection(roomId, roomState, briefcases[briefcaseIndex], true);
+      this.finalizeSelection(roomId, roomState, briefcases[briefcaseIndex], 'extra_chance');
     }
   },
 
@@ -485,7 +487,7 @@ const FirebaseEngine = {
     });
   },
 
-  finalizeSelection(roomId, roomState, briefcase, consumeExtraChance) {
+  finalizeSelection(roomId, roomState, briefcase, consumeCardId) {
     const roomRef = db.ref('dond_rooms/' + roomId);
     const isHost = roomState.currentTurn === 'host';
     const playerKey = isHost ? 'host' : 'guest';
@@ -505,8 +507,9 @@ const FirebaseEngine = {
     if (briefcase.helperCard && !newHelper) {
       newHelper = briefcase.helperCard;
       helperJustDrawn = briefcase.helperCard;
-    } else if (consumeExtraChance && playerObj.helperCard && playerObj.helperCard.id === 'extra_chance') {
-      // Card consumed only for the acting player (playerKey) after their 3rd pick completes
+    } else if (consumeCardId && playerObj.helperCard && playerObj.helperCard.id === consumeCardId) {
+      // Card consumed only for the acting player (playerKey), e.g. extra_chance
+      // after its 3rd pick, or random_pick/free_pick right after they're used.
       newHelper = null;
     }
 
@@ -770,6 +773,36 @@ const FirebaseEngine = {
       kind: 'protection',
       text: `🛡️ ${me.name} حمى ${me.squad[posKey].name} من السرقة!`
     });
+  },
+
+  useRandomPick(roomId, roomState) {
+    // Usable right before picking (waiting_pick_1): instantly assigns a random
+    // one of the 4 current cards, skipping the manual pick/deal flow entirely.
+    if (roomState.turnState.status !== 'waiting_pick_1') return;
+    const isHost = roomState.currentTurn === 'host';
+    const activePlayer = isHost ? roomState.host : roomState.guest;
+    if (!activePlayer?.helperCard || activePlayer.helperCard.id !== 'random_pick') return;
+    const idx = Math.floor(Math.random() * roomState.turnState.briefcases.length);
+    this.finalizeSelection(roomId, roomState, roomState.turnState.briefcases[idx], 'random_pick');
+  },
+
+  useFreePick(roomId, roomState) {
+    // Reveals all 4 cards face-up so the active player can pick whichever
+    // one they actually want (see confirmFreePick).
+    if (roomState.turnState.status !== 'waiting_pick_1') return;
+    const isHost = roomState.currentTurn === 'host';
+    const activePlayer = isHost ? roomState.host : roomState.guest;
+    if (!activePlayer?.helperCard || activePlayer.helperCard.id !== 'free_pick') return;
+    const revealedBriefcases = roomState.turnState.briefcases.map(b => ({ ...b, isRevealed: true }));
+    const roomRef = db.ref('dond_rooms/' + roomId);
+    roomRef.child('turnState').update({ briefcases: revealedBriefcases, status: 'free_pick_active' });
+  },
+
+  confirmFreePick(roomId, roomState, briefcaseIndex) {
+    if (roomState.turnState.status !== 'free_pick_active') return;
+    const briefcase = roomState.turnState.briefcases[briefcaseIndex];
+    if (!briefcase) return;
+    this.finalizeSelection(roomId, roomState, briefcase, 'free_pick');
   },
 
   dumpOnOpponent(roomId, roomState) {

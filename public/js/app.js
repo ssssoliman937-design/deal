@@ -81,6 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnDeal = document.getElementById('btn-deal');
   const btnNoDeal = document.getElementById('btn-no-deal');
   const btnDumpOpponent = document.getElementById('btn-dump-opponent');
+  const prepickActionBar = document.getElementById('prepick-action-bar');
+  const prepickActionText = document.getElementById('prepick-action-text');
+  const btnUseRandomPick = document.getElementById('btn-use-random-pick');
+  const btnUseFreePick = document.getElementById('btn-use-free-pick');
   const missedCardsReveal = document.getElementById('missed-cards-reveal');
   const missedCardsGrid = document.getElementById('missed-cards-grid');
 
@@ -242,6 +246,18 @@ document.addEventListener('DOMContentLoaded', () => {
     FirebaseEngine.dumpOnOpponent(currentRoomId, roomState);
   });
 
+  btnUseRandomPick.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.useRandomPick(currentRoomId, roomState);
+  });
+
+  btnUseFreePick.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.useFreePick(currentRoomId, roomState);
+  });
+
   btnStartSimulation.addEventListener('click', () => {
     triggerHaptic([30, 40]);
     window.soundFX.playClick();
@@ -401,6 +417,19 @@ document.addEventListener('DOMContentLoaded', () => {
       waitingNotice.classList.add('hidden');
     }
 
+    const activePlayerObj = isHostTurn ? roomState.host : roomState.guest;
+    const myPrepickHelper = isMyTurn ? activePlayerObj?.helperCard : null;
+    const canPrepick = isMyTurn && roomState.turnState.status === 'waiting_pick_1'
+      && (myPrepickHelper?.id === 'random_pick' || myPrepickHelper?.id === 'free_pick');
+    prepickActionBar.classList.toggle('hidden', !canPrepick);
+    btnUseRandomPick.classList.toggle('hidden', myPrepickHelper?.id !== 'random_pick');
+    btnUseFreePick.classList.toggle('hidden', myPrepickHelper?.id !== 'free_pick');
+    if (canPrepick) {
+      prepickActionText.textContent = myPrepickHelper.id === 'random_pick'
+        ? '🎰 معاك كارت حظ عشوائي! تقدر تاخد لاعب عشوائي فورًا من غير ما تدور.'
+        : '👁️ معاك كارت اختيار حر! تقدر تكشف الأربع بطاقات وتختار أي واحدة عايزها.';
+    }
+
     briefcases.forEach((b, index) => {
       const bCard = document.createElement('div');
       bCard.className = `briefcase-card ${b.isRevealed ? 'revealed' : ''} ${!isMyTurn ? 'disabled-turn' : ''}`;
@@ -431,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = b.item;
         const rarityPct = FirebaseEngine.getRarityPct(item, roomState.turnState.positionKey);
         bCard.innerHTML = `
-          ${b.helperCard ? `<div class="helper-tag">${b.helperCard.name}</div>` : ''}
+          ${b.helperCard ? `<div class="helper-tag">${b.helperCard.name}${cardInfoIcon(b.helperCard)}</div>` : ''}
           <div class="fifa-card ${FirebaseEngine.isIconLegend(item.name) ? 'icon-legend' : ''}">
             <div class="fifa-rating">${item.rating}</div>
             <div class="fifa-name">${item.name}</div>
@@ -439,6 +468,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="fifa-rarity">⭐ ندرة تقريبية: ${rarityPct}%</div>
           </div>
         `;
+
+        if (isMyTurn && roomState.turnState.status === 'free_pick_active') {
+          bCard.style.cursor = 'pointer';
+          bCard.classList.add('steal-selectable');
+          bCard.onclick = () => {
+            window.soundFX.playClick();
+            FirebaseEngine.confirmFreePick(currentRoomId, roomState, index);
+          };
+        }
       }
 
       briefcasesContainer.appendChild(bCard);
@@ -453,7 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="fifa-card inline">
             <span class="fifa-rating">${pickedB.item.rating}</span> -
             <span class="fifa-name">${pickedB.item.name}</span> (${pickedB.item.club})
-            ${pickedB.helperCard ? `<div class="helper-tag inline">${pickedB.helperCard.name}</div>` : ''}
+            ${pickedB.helperCard ? `<div class="helper-tag inline">${pickedB.helperCard.name}${cardInfoIcon(pickedB.helperCard)}</div>` : ''}
           </div>
         `;
       }
@@ -464,16 +502,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function helperBadgeText(playerObj, ownerRole) {
-    if (!playerObj.helperCard) return 'بدون مساعدة';
-    if (myRole === ownerRole || myRole === 'spectator') return playerObj.helperCard.name;
-    return '🎁 كارت خاص';
+  function helperBadgeText(playerObj) {
+    return playerObj.helperCard ? playerObj.helperCard.name : 'بدون مساعدة';
+  }
+
+  function cardInfoIcon(card) {
+    if (!card || !card.desc) return '';
+    const safeDesc = String(card.desc).replace(/"/g, '&quot;');
+    return `<span class="card-info-icon" tabindex="0" data-tooltip="${safeDesc}">؟</span>`;
   }
 
   function renderSquads() {
     // Host Squad
     hostSquadName.textContent = roomState.host.name;
-    hostHelperBadge.textContent = helperBadgeText(roomState.host, 'host');
+    hostHelperBadge.innerHTML = helperBadgeText(roomState.host) + cardInfoIcon(roomState.host.helperCard);
     hostHelperBadge.style.background = roomState.host.helperCard ? 'var(--neon-red)' : '';
 
     renderSquadList(hostSquadList, roomState.host.squad, 'host');
@@ -481,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Guest Squad
     if (roomState.guest) {
       guestSquadName.textContent = roomState.guest.name;
-      guestHelperBadge.textContent = helperBadgeText(roomState.guest, 'guest');
+      guestHelperBadge.innerHTML = helperBadgeText(roomState.guest) + cardInfoIcon(roomState.guest.helperCard);
       guestHelperBadge.style.background = roomState.guest.helperCard ? 'var(--neon-red)' : '';
       renderSquadList(guestSquadList, roomState.guest.squad, 'guest');
     } else {
