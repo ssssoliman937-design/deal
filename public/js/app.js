@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let turnTimerInterval = null;
   let turnTimerSeconds = 15;
   let lastProcessedEmojiTimestamp = 0;
+  let lastProcessedNotificationId = null;
+  let hasReceivedFirstState = false;
 
   // Haptic Feedback for Mobile
   function triggerHaptic(pattern = [30, 50, 30]) {
@@ -26,7 +28,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const viewLobby = document.getElementById('view-lobby');
   const viewDraft = document.getElementById('view-draft');
+  const viewLineup = document.getElementById('view-lineup');
   const viewMatch = document.getElementById('view-match');
+
+  const lineupHostName = document.getElementById('lineup-host-name');
+  const lineupGuestName = document.getElementById('lineup-guest-name');
+  const lineupHostList = document.getElementById('lineup-host-list');
+  const lineupGuestList = document.getElementById('lineup-guest-list');
+  const btnStartSimulation = document.getElementById('btn-start-simulation');
+  const stealActionBox = document.getElementById('steal-action-box');
+  const btnTriggerSteal = document.getElementById('btn-trigger-steal');
+  const stealConfirmOverlay = document.getElementById('steal-confirm-overlay');
+  const stealConfirmText = document.getElementById('steal-confirm-text');
+  const btnStealConfirmYes = document.getElementById('btn-steal-confirm-yes');
+  const btnStealConfirmDifferent = document.getElementById('btn-steal-confirm-different');
+  const btnStealConfirmCancel = document.getElementById('btn-steal-confirm-cancel');
+  const protectionActionBox = document.getElementById('protection-action-box');
+  const protectionBoxText = document.getElementById('protection-box-text');
+  const btnTriggerProtection = document.getElementById('btn-trigger-protection');
 
   const roomInfoBar = document.getElementById('room-info-bar');
   const displayRoomId = document.getElementById('display-room-id');
@@ -61,6 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const pickedCardPreview = document.getElementById('picked-card-preview');
   const btnDeal = document.getElementById('btn-deal');
   const btnNoDeal = document.getElementById('btn-no-deal');
+  const btnDumpOpponent = document.getElementById('btn-dump-opponent');
+  const prepickActionBar = document.getElementById('prepick-action-bar');
+  const prepickActionText = document.getElementById('prepick-action-text');
+  const btnUseRandomPick = document.getElementById('btn-use-random-pick');
+  const btnUseFreePick = document.getElementById('btn-use-free-pick');
   const missedCardsReveal = document.getElementById('missed-cards-reveal');
   const missedCardsGrid = document.getElementById('missed-cards-grid');
 
@@ -91,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // VIEW SWITCHER
   function showView(viewId) {
-    [viewLobby, viewDraft, viewMatch].forEach(view => {
+    [viewLobby, viewDraft, viewLineup, viewMatch].forEach(view => {
       if (view.id === viewId) {
         view.classList.remove('hidden');
         view.classList.add('active');
@@ -213,7 +237,31 @@ document.addEventListener('DOMContentLoaded', () => {
   btnNoDeal.addEventListener('click', () => {
     triggerHaptic([30, 40]);
     window.soundFX.playClick();
-    FirebaseEngine.rejectDeal(currentRoomId);
+    FirebaseEngine.rejectDeal(currentRoomId, roomState);
+  });
+
+  btnDumpOpponent.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.dumpOnOpponent(currentRoomId, roomState);
+  });
+
+  btnUseRandomPick.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.useRandomPick(currentRoomId, roomState);
+  });
+
+  btnUseFreePick.addEventListener('click', () => {
+    triggerHaptic([40, 60, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.useFreePick(currentRoomId, roomState);
+  });
+
+  btnStartSimulation.addEventListener('click', () => {
+    triggerHaptic([30, 40]);
+    window.soundFX.playClick();
+    FirebaseEngine.confirmLineupReady(currentRoomId, roomState);
   });
 
   btnRematch.addEventListener('click', () => {
@@ -236,6 +284,22 @@ document.addEventListener('DOMContentLoaded', () => {
       myRole = 'guest';
     } else {
       myRole = 'spectator';
+    }
+
+    if (!hasReceivedFirstState) {
+      // Don't replay old emoji/notifications on first load or reconnect
+      hasReceivedFirstState = true;
+      if (roomState.lastEmoji) lastProcessedEmojiTimestamp = roomState.lastEmoji.timestamp;
+      if (roomState.lastNotification) lastProcessedNotificationId = roomState.lastNotification.id;
+    } else {
+      if (roomState.lastEmoji && roomState.lastEmoji.timestamp > lastProcessedEmojiTimestamp) {
+        lastProcessedEmojiTimestamp = roomState.lastEmoji.timestamp;
+        renderFloatingEmoji(roomState.lastEmoji.symbol);
+      }
+      if (roomState.lastNotification && roomState.lastNotification.id !== lastProcessedNotificationId) {
+        lastProcessedNotificationId = roomState.lastNotification.id;
+        showNotification(roomState.lastNotification.text, 5000);
+      }
     }
 
     updateRoomUI();
@@ -270,10 +334,22 @@ document.addEventListener('DOMContentLoaded', () => {
       showView('view-draft');
       renderDraftView();
       renderSquads();
+    } else if (roomState.status === 'lineup') {
+      showView('view-lineup');
+      renderLineupView();
     } else if (roomState.status === 'simulating' || roomState.status === 'finished') {
       showView('view-match');
       renderMatchView();
     }
+  }
+
+  function renderLineupView() {
+    lineupHostName.textContent = roomState.host.name;
+    lineupGuestName.textContent = roomState.guest ? roomState.guest.name : 'الضيف';
+    renderSquadList(lineupHostList, roomState.host.squad, 'host');
+    renderSquadList(lineupGuestList, roomState.guest ? roomState.guest.squad : null, 'guest');
+    renderStealBox();
+    renderProtectionBox();
   }
 
   function renderDraftView() {
@@ -302,7 +378,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const posName = roomState.turnState.positionNameAr || 'اللاعبين';
 
     if (isMyTurn) {
-      currentTurnDesc.textContent = `🎯 دورك الآن لاختيار ${posName}! (${roomState.turnState.pickNumber === 1 ? 'المحاولة الثانية - إجبارية' : 'المحاولة الأولى'})`;
+      const attemptLabel = roomState.turnState.pickNumber === 2 ? 'المحاولة الثالثة - فرصة إضافية 🎲'
+        : roomState.turnState.pickNumber === 1 ? 'المحاولة الثانية - إجبارية'
+        : 'المحاولة الأولى';
+      currentTurnDesc.textContent = `🎯 دورك الآن لاختيار ${posName}! (${attemptLabel})`;
       currentTurnDesc.style.color = 'var(--neon-green)';
     } else if (myRole === 'spectator') {
       currentTurnDesc.textContent = `👁️ بث مباشر: متابعة اختيار ${posName} بواسطة اللاعب (${activePlayerName})...`;
@@ -338,6 +417,19 @@ document.addEventListener('DOMContentLoaded', () => {
       waitingNotice.classList.add('hidden');
     }
 
+    const activePlayerObj = isHostTurn ? roomState.host : roomState.guest;
+    const myPrepickHelper = isMyTurn ? activePlayerObj?.helperCard : null;
+    const canPrepick = isMyTurn && roomState.turnState.status === 'waiting_pick_1'
+      && (myPrepickHelper?.id === 'random_pick' || myPrepickHelper?.id === 'free_pick');
+    prepickActionBar.classList.toggle('hidden', !canPrepick);
+    btnUseRandomPick.classList.toggle('hidden', myPrepickHelper?.id !== 'random_pick');
+    btnUseFreePick.classList.toggle('hidden', myPrepickHelper?.id !== 'free_pick');
+    if (canPrepick) {
+      prepickActionText.textContent = myPrepickHelper.id === 'random_pick'
+        ? '🎰 معاك كارت حظ عشوائي! تقدر تاخد لاعب عشوائي فورًا من غير ما تدور.'
+        : '👁️ معاك كارت اختيار حر! تقدر تكشف الأربع بطاقات وتختار أي واحدة عايزها.';
+    }
+
     briefcases.forEach((b, index) => {
       const bCard = document.createElement('div');
       bCard.className = `briefcase-card ${b.isRevealed ? 'revealed' : ''} ${!isMyTurn ? 'disabled-turn' : ''}`;
@@ -351,7 +443,9 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         `;
 
-        if (isMyTurn && roomState.turnState.status !== 'picked_1_pending_deal') {
+        const pendingDeal = roomState.turnState.status === 'picked_1_pending_deal' || roomState.turnState.status === 'picked_2_pending_deal';
+
+        if (isMyTurn && !pendingDeal) {
           bCard.style.cursor = 'pointer';
           bCard.onclick = () => {
             window.soundFX.playClick();
@@ -364,66 +458,81 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Revealed FIFA Card item
         const item = b.item;
+        const rarityPct = FirebaseEngine.getRarityPct(item, roomState.turnState.positionKey);
         bCard.innerHTML = `
-          ${b.helperCard ? `<div class="helper-tag">${b.helperCard.name}</div>` : ''}
-          <div class="fifa-card">
+          ${b.helperCard ? `<div class="helper-tag">${b.helperCard.name}${cardInfoIcon(b.helperCard)}</div>` : ''}
+          <div class="fifa-card ${FirebaseEngine.isIconLegend(item.name) ? 'icon-legend' : ''}">
             <div class="fifa-rating">${item.rating}</div>
             <div class="fifa-name">${item.name}</div>
             <div class="fifa-meta">${item.club} | ${item.nation}</div>
+            <div class="fifa-rarity">⭐ ندرة تقريبية: ${rarityPct}%</div>
           </div>
         `;
+
+        if (isMyTurn && roomState.turnState.status === 'free_pick_active') {
+          bCard.style.cursor = 'pointer';
+          bCard.classList.add('steal-selectable');
+          bCard.onclick = () => {
+            window.soundFX.playClick();
+            FirebaseEngine.confirmFreePick(currentRoomId, roomState, index);
+          };
+        }
       }
 
       briefcasesContainer.appendChild(bCard);
     });
 
     // Decision Panel (Deal / No Deal)
-    if (isMyTurn && roomState.turnState.status === 'picked_1_pending_deal') {
+    if (isMyTurn && (roomState.turnState.status === 'picked_1_pending_deal' || roomState.turnState.status === 'picked_2_pending_deal')) {
       decisionPanel.classList.remove('hidden');
       const pickedB = briefcases[roomState.turnState.pickedBriefcaseIndex];
       if (pickedB && pickedB.item) {
         pickedCardPreview.innerHTML = `
           <div class="fifa-card inline">
-            <span class="fifa-rating">${pickedB.item.rating}</span> - 
+            <span class="fifa-rating">${pickedB.item.rating}</span> -
             <span class="fifa-name">${pickedB.item.name}</span> (${pickedB.item.club})
-            ${pickedB.helperCard ? `<div class="helper-tag inline">${pickedB.helperCard.name}</div>` : ''}
+            ${pickedB.helperCard ? `<div class="helper-tag inline">${pickedB.helperCard.name}${cardInfoIcon(pickedB.helperCard)}</div>` : ''}
           </div>
         `;
       }
+      const activePlayer = isHostTurn ? roomState.host : roomState.guest;
+      btnDumpOpponent.classList.toggle('hidden', activePlayer?.helperCard?.id !== 'force_pick' || !roomState.guest);
     } else {
       decisionPanel.classList.add('hidden');
     }
   }
 
+  function helperBadgeText(playerObj) {
+    return playerObj.helperCard ? playerObj.helperCard.name : 'بدون مساعدة';
+  }
+
+  function cardInfoIcon(card) {
+    if (!card || !card.desc) return '';
+    const safeDesc = String(card.desc).replace(/"/g, '&quot;');
+    return `<span class="card-info-icon" tabindex="0" data-tooltip="${safeDesc}">؟</span>`;
+  }
+
   function renderSquads() {
     // Host Squad
     hostSquadName.textContent = roomState.host.name;
-    if (roomState.host.helperCard) {
-      hostHelperBadge.textContent = roomState.host.helperCard.name;
-      hostHelperBadge.style.background = 'var(--neon-red)';
-    } else {
-      hostHelperBadge.textContent = 'بدون مساعدة';
-    }
+    hostHelperBadge.innerHTML = helperBadgeText(roomState.host) + cardInfoIcon(roomState.host.helperCard);
+    hostHelperBadge.style.background = roomState.host.helperCard ? 'var(--neon-red)' : '';
 
-    renderSquadList(hostSquadList, roomState.host.squad);
+    renderSquadList(hostSquadList, roomState.host.squad, 'host');
 
     // Guest Squad
     if (roomState.guest) {
       guestSquadName.textContent = roomState.guest.name;
-      if (roomState.guest.helperCard) {
-        guestHelperBadge.textContent = roomState.guest.helperCard.name;
-        guestHelperBadge.style.background = 'var(--neon-red)';
-      } else {
-        guestHelperBadge.textContent = 'بدون مساعدة';
-      }
-      renderSquadList(guestSquadList, roomState.guest.squad);
+      guestHelperBadge.innerHTML = helperBadgeText(roomState.guest) + cardInfoIcon(roomState.guest.helperCard);
+      guestHelperBadge.style.background = roomState.guest.helperCard ? 'var(--neon-red)' : '';
+      renderSquadList(guestSquadList, roomState.guest.squad, 'guest');
     } else {
       guestSquadName.textContent = 'الضيف';
       guestSquadList.innerHTML = '<div class="squad-slot"><span class="slot-pos">في انتظار انضمام الضيف...</span></div>';
     }
   }
 
-  function renderSquadList(container, squad) {
+  function renderSquadList(container, squad, ownerRole) {
     container.innerHTML = '';
     const posKeys = ['GK', 'DEF', 'MID', 'ATT', 'MGR'];
     const posNames = { GK: 'حارس', DEF: 'مدافع', MID: 'وسط', ATT: 'مهاجم', MGR: 'مدرب' };
@@ -433,12 +542,39 @@ document.addEventListener('DOMContentLoaded', () => {
       const item = squad ? squad[key] : null;
 
       if (item) {
+        const isProtected = ownerRole && roomState[ownerRole]?.protectedPos === key;
         slot.className = 'squad-slot filled';
         slot.innerHTML = `
-          <span class="slot-pos">${posNames[key]}</span>
+          <span class="slot-pos">${posNames[key]}${isProtected ? ' 🛡️' : ''}</span>
           <span class="slot-player">${item.name}</span>
           <span class="slot-rating">${item.rating}</span>
         `;
+
+        const isMyPickStep = stealStep === 'pick_mine' && ownerRole === myRole;
+        const isOppPickStep = stealStep === 'pick_theirs' && ownerRole === opponentRole() && !isProtected;
+        const isMyProtectPickStep = protectStep === 'pick' && ownerRole === myRole;
+
+        if (isMyPickStep || isOppPickStep) {
+          slot.classList.add('steal-selectable');
+          slot.onclick = () => {
+            if (isMyPickStep) {
+              stealMyPos = key;
+              stealStep = 'pick_theirs';
+              renderStealBox();
+              renderSquads();
+              if (typeof renderLineupView === 'function' && roomState.status === 'lineup') renderLineupView();
+            } else {
+              openStealConfirm(key, item);
+            }
+          };
+        } else if (isMyProtectPickStep) {
+          slot.classList.add('steal-selectable');
+          slot.onclick = () => {
+            FirebaseEngine.setProtection(currentRoomId, roomState, key);
+            protectStep = 'idle';
+            renderLineupView();
+          };
+        }
       } else {
         slot.className = 'squad-slot';
         slot.innerHTML = `
@@ -450,6 +586,91 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(slot);
     });
   }
+
+  // STEAL CARD FLOW
+  let stealStep = 'idle'; // idle | pick_mine | pick_theirs
+  let stealMyPos = null;
+
+  function opponentRole() {
+    if (myRole === 'host') return 'guest';
+    if (myRole === 'guest') return 'host';
+    return null;
+  }
+
+  function myHelperCard() {
+    if (myRole === 'host') return roomState?.host?.helperCard;
+    if (myRole === 'guest') return roomState?.guest?.helperCard;
+    return null;
+  }
+
+  function renderStealBox() {
+    const hasSteal = myHelperCard()?.id === 'steal';
+    const canSteal = hasSteal && roomState && roomState.status === 'lineup' && roomState.guest;
+    stealActionBox.classList.toggle('hidden', !canSteal);
+    if (!canSteal && stealStep !== 'idle') {
+      stealStep = 'idle';
+      stealMyPos = null;
+    }
+  }
+
+  btnTriggerSteal.addEventListener('click', () => {
+    stealStep = 'pick_mine';
+    stealMyPos = null;
+    showNotification('🥷 اضغط على لاعب من تشكيلتك عايز تبدله');
+    renderSquads();
+    if (roomState.status === 'lineup') renderLineupView();
+  });
+
+  function openStealConfirm(oppPos, oppItem) {
+    const myItem = roomState[myRole].squad[stealMyPos];
+    stealConfirmText.textContent = `عايز تبدل لاعب ${myItem.name} بـ ${oppItem.name}؟`;
+    stealConfirmOverlay.dataset.oppPos = oppPos;
+    stealConfirmOverlay.classList.remove('hidden');
+  }
+
+  btnStealConfirmYes.addEventListener('click', () => {
+    const oppPos = stealConfirmOverlay.dataset.oppPos;
+    FirebaseEngine.requestSteal(currentRoomId, roomState, stealMyPos, oppPos);
+    stealConfirmOverlay.classList.add('hidden');
+    stealStep = 'idle';
+    stealMyPos = null;
+  });
+
+  btnStealConfirmDifferent.addEventListener('click', () => {
+    stealConfirmOverlay.classList.add('hidden');
+    // stealStep stays 'pick_theirs', stealMyPos unchanged — pick a different opponent player
+  });
+
+  btnStealConfirmCancel.addEventListener('click', () => {
+    stealConfirmOverlay.classList.add('hidden');
+    stealStep = 'idle';
+    stealMyPos = null;
+    renderSquads();
+    if (roomState && roomState.status === 'lineup') renderLineupView();
+  });
+
+  // PROTECTION CARD FLOW
+  let protectStep = 'idle'; // idle | pick
+
+  function renderProtectionBox() {
+    const hasProtection = myHelperCard()?.id === 'protection';
+    const canProtect = hasProtection && roomState && roomState.status === 'lineup' && roomState.guest;
+    protectionActionBox.classList.toggle('hidden', !canProtect);
+    if (!canProtect && protectStep !== 'idle') protectStep = 'idle';
+    if (canProtect) {
+      const myProtected = roomState[myRole]?.protectedPos;
+      const posNames = { GK: 'حارس', DEF: 'مدافع', MID: 'وسط', ATT: 'مهاجم', MGR: 'مدرب' };
+      protectionBoxText.textContent = myProtected
+        ? `🛡️ اللاعب المحمي حاليًا: ${posNames[myProtected]}. تقدر تغيّره لو حابب.`
+        : '🛡️ لديك درع الحماية! اختار لاعب من تشكيلتك تحميه من السرقة!';
+    }
+  }
+
+  btnTriggerProtection.addEventListener('click', () => {
+    protectStep = 'pick';
+    showNotification('🛡️ اضغط على لاعب من تشكيلتك تحميه من السرقة');
+    renderLineupView();
+  });
 
   function renderMatchView() {
     simHostName.textContent = roomState.host.name;

@@ -1,0 +1,215 @@
+/* المزاد — auction-game specific styles (built on top of /css/style.css tokens) */
+
+/* ---------- Lobby ---------- */
+.lobby-container {
+  max-width: 480px;
+  margin: 60px auto;
+  padding: 36px;
+  text-align: center;
+}
+
+.lobby-title {
+  font-size: 2rem;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.lobby-desc {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin-bottom: 26px;
+}
+
+.mazad-input {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-main);
+  font-family: var(--font-arabic);
+  font-size: 0.95rem;
+  margin-bottom: 14px;
+  text-align: center;
+}
+.mazad-input:focus { outline: none; border-color: var(--gold-primary); }
+
+.mode-picker {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.mode-card { flex: 1; cursor: pointer; }
+.mode-card input { display: none; }
+
+.mode-card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 0.2s ease;
+}
+
+.mode-card input:checked + .mode-card-body {
+  border-color: var(--gold-primary);
+  background: rgba(255, 215, 0, 0.1);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+}
+
+.mode-icon { font-size: 1.6rem; }
+.mode-name { font-weight: 800; font-size: 0.95rem; }
+.mode-detail { font-size: 0.72rem; color: var(--text-muted); text-align: center; }
+
+.lobby-actions { display: flex; flex-direction: column; gap: 14px; }
+.lobby-action-block { display: flex; flex-direction: column; gap: 10px; }
+.lobby-divider {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  position: relative;
+  margin: 4px 0;
+}
+
+/* ---------- Auction stage ---------- */
+.auction-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.budgets-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.budget-box {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.budget-name { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); }
+.budget-amount {
+  font-family: var(--font-nums);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--gold-primary);
+  direction: ltr;
+  text-align: right;
+}
+
+.budget-vs { font-weight: 900; color: var(--text-muted); font-size: 0.9rem; }
+
+.auction-stage {
+  padding: 30px;
+  text-align: center;
+  min-height: 320px;
+}
+
+.auction-position-label {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--gold-primary);
+  margin-bottom: 22px;
+}
+
+.auction-panel { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.auction-fifa-card {
+  width: 190px;
+  min-height: 150px;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--border-glass);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.auction-fifa-card.sm { width: 130px; min-height: 110px; padding: 10px; }
+.auction-fifa-card-empty { color: var(--text-muted); font-size: 0.85rem; padding: 20px; }
+
+.bid-status { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.bid-current-label { font-size: 0.78rem; color: var(--text-muted); }
+.bid-current-amount {
+  font-family: var(--font-nums);
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--gold-primary);
+  direction: ltr;
+}
+
+.bid-turn-indicator { font-size: 0.95rem; font-weight: 700; }
+
+.bid-controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.disabled-btn { opacity: 0.35; cursor: not-allowed; }
+
+.uncontested-text {
+  max-width: 420px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.result-title { font-size: 1.2rem; font-weight: 800; color: var(--gold-primary); }
+.result-cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.result-card-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.result-card-label { font-size: 0.75rem; color: var(--text-muted); }
+
+.mini-squads-row {
+  display: flex;
+  gap: 16px;
+}
+
+.mini-squad-box {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.mini-squad-title { display: block; font-weight: 800; font-size: 0.88rem; margin-bottom: 10px; }
+
+.mini-squad-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.mini-slot-chip {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-glass);
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--text-muted);
+}
+.mini-slot-chip.full { border-color: var(--neon-green); color: var(--neon-green); background: rgba(0, 255, 136, 0.08); }
+
+/* ---------- Final results ---------- */
+.final-container { max-width: 760px; margin: 40px auto; padding: 34px; text-align: center; }
+.final-title { font-size: 1.5rem; margin-bottom: 24px; }
+.final-columns { display: flex; gap: 20px; text-align: right; margin-bottom: 26px; }
+.final-col { flex: 1; background: rgba(0, 0, 0, 0.25); border-radius: 14px; padding: 18px; }
+.final-col h3 { margin-bottom: 4px; }
+.final-budget { display: block; color: var(--gold-primary); font-size: 0.85rem; margin-bottom: 14px; }
+
+@media (max-width: 700px) {
+  .mode-picker { flex-direction: column; }
+  .mini-squads-row, .final-columns { flex-direction: column; }
+  .bid-controls { flex-direction: column; width: 100%; }
+}
