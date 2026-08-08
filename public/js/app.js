@@ -465,10 +465,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function helperBadgeText(playerObj, ownerRole) {
-    if (!playerObj.helperCard) return 'بدون مساعدة';
-    if (myRole === ownerRole || myRole === 'spectator') return playerObj.helperCard.name;
-    return '🎁 كارت خاص';
+  function helperBadgeText(playerObj) {
+    return playerObj.helperCard ? playerObj.helperCard.name : 'بدون مساعدة';
   }
 
   function renderSquads() {
